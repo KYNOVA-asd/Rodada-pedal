@@ -1,4 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Rodada</string>
+    <string name="speed_unit">km/h</string>
+    <string name="searching_gps">Buscando GPS</string>
+    <string name="distance_label">DISTANCIA</string>
+    <string name="elapsed_label">TIEMPO</string>
+    <string name="start_ride">Iniciar recorrido</string>
+    <string name="stop_ride">Detener recorrido</string>
+    <string name="permissions_explanation">Rodada usa tu ubicación precisa solo durante el recorrido y muestra una notificación mientras mide con la pantalla apagada.</string>
+    <string name="permissions_title">Permisos para el recorrido</string>
+    <string name="permissions_needed">Se necesitan ubicación precisa y notificaciones para iniciar.</string>
+    <string name="location_off">Activa la ubicación del teléfono para iniciar.</string>
+    <string name="permissions_continue">Continuar</string>
+    <string name="permissions_cancel">Cancelar</string>
+    <string name="speed_value">%1$d</string>
+    <string name="distance_value">%1$.1f km</string>
+    <string name="elapsed_value">%1$02d:%2$02d:%3$02d</string>
+    <string name="ride_notification_title">Rodada: recorrido en curso</string>
+    <string name="ride_notification_text">Midiendo velocidad y distancia con GPS</string>
 </resources>
