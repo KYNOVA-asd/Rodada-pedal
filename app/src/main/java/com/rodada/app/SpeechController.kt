@@ -72,6 +72,11 @@ class SpeechController(private val activity: Activity) {
             showMissingVoice()
             return
         }
+        speak(statusMessage(rideActive, speedKmh))
+    }
+
+    /** Texto de la hora y, durante un recorrido, la velocidad. */
+    fun statusMessage(rideActive: Boolean, speedKmh: Int): String {
         val now = LocalTime.now()
         val hour = now.hour % 12
         val hourText = if (hour == 1) {
@@ -86,12 +91,11 @@ class SpeechController(private val activity: Activity) {
             30 -> activity.getString(R.string.speech_half)
             else -> activity.getString(R.string.speech_minutes, now.minute)
         }
-        val message = "$hourText $minuteText." + if (rideActive) {
+        return "$hourText $minuteText." + if (rideActive) {
             " " + activity.getString(R.string.speech_speed, speedKmh)
         } else {
             ""
         }
-        speak(message)
     }
 
     private fun speak(message: String) {

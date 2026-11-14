@@ -22,6 +22,7 @@ import android.widget.LinearLayout
 import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
+import com.rodada.enlace.Mensaje
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
@@ -40,6 +41,9 @@ class MainActivity : Activity() {
     private var hidRemote: HidMediaRemote? = null
     private var askedDiscoverable = false
     private var wasConnected = false
+    private lateinit var linkStatus: TextView
+    private var enlace: EnlaceCliente? = null
+    private var afterBluetoothPermission: (() -> Unit)? = null
 
     private val updateScreen = object : Runnable {
         override fun run() {
@@ -61,9 +65,7 @@ class MainActivity : Activity() {
         audioManager = getSystemService(AudioManager::class.java)
         vibrator = getSystemService(Vibrator::class.java)
         val infoPanel = findViewById<LinearLayout>(R.id.info_panel)
-        infoPanel.setOnClickListener {
-            speech.speakStatus(RideState.running, RideState.speedKmh.toInt())
-        }
+        infoPanel.setOnClickListener { sayStatus() }
         infoPanel.setOnLongClickListener {
             toggleRide()
             true
@@ -77,6 +79,8 @@ class MainActivity : Activity() {
         } else {
             useThisPhone()
         }
+        linkStatus = findViewById(R.id.link_status)
+        startLinkIfPossible()
     }
 
     override fun onResume() {
@@ -93,6 +97,7 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         speech.close()
         hidRemote?.stop()
+        enlace?.detener()
         super.onDestroy()
     }
 
@@ -182,15 +187,96 @@ class MainActivity : Activity() {
             menu.add(MENU_TARGET_GROUP, MENU_MOTOROLA, 1, R.string.target_motorola)
             menu.setGroupCheckable(MENU_TARGET_GROUP, true, true)
             menu.findItem(if (isMotorolaTarget()) MENU_MOTOROLA else MENU_THIS_PHONE).isChecked = true
+            menu.add(MENU_VOICE_GROUP, MENU_VOICE_PHONE, 2, R.string.voice_this_phone)
+            menu.add(MENU_VOICE_GROUP, MENU_VOICE_MOTOROLA, 3, R.string.voice_motorola)
+            menu.setGroupCheckable(MENU_VOICE_GROUP, true, true)
+            menu.findItem(if (isVoiceOnMotorola()) MENU_VOICE_MOTOROLA else MENU_VOICE_PHONE).isChecked = true
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     MENU_THIS_PHONE -> useThisPhone()
                     MENU_MOTOROLA -> onMotorolaChosen()
+                    MENU_VOICE_PHONE -> prefs.edit().putString(KEY_VOICE, TARGET_PHONE).apply()
+                    MENU_VOICE_MOTOROLA -> {
+                        prefs.edit().putString(KEY_VOICE, TARGET_MOTOROLA).apply()
+                        withBluetoothPermission { startLinkIfPossible() }
+                    }
                 }
                 true
             }
             show()
         }
+        enlace?.reintentar()
+    }
+
+    private fun isVoiceOnMotorola(): Boolean = prefs.getString(KEY_VOICE, TARGET_PHONE) == TARGET_MOTOROLA
+
+    /** Con "Voz en: Motorola" y enlace activo, lo dice el Motorola; si no, este teléfono. */
+    private fun sayStatus() {
+        val link = enlace
+        if (isVoiceOnMotorola() && link != null && link.conectado) {
+            val text = speech.statusMessage(RideState.running, RideState.speedKmh.toInt())
+            link.enviar(Mensaje.Decir(text))
+            if (vibrator.hasVibrator()) {
+                vibrator.vibrate(VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE))
+            }
+        } else {
+            speech.speakStatus(RideState.running, RideState.speedKmh.toInt())
+        }
+    }
+
+    /** El enlace se abre si ya hay un Motorola emparejado (lo guarda el control HID) y permiso. */
+    private fun startLinkIfPossible() {
+        val address = prefs.getString(KEY_MOTOROLA_ADDRESS, null)
+        if (enlace != null || address == null || !hasBluetoothPermissions()) {
+            showLinkStatus()
+            return
+        }
+        val link = EnlaceCliente(this, address, { showLinkStatus() }) { mensaje ->
+            when (mensaje) {
+                is Mensaje.Hola, is Mensaje.Decir, is Mensaje.Notif -> Unit
+            }
+        }
+        enlace = link
+        link.iniciar()
+        showLinkStatus()
+    }
+
+    private fun showLinkStatus() {
+        val link = enlace
+        if (link == null) {
+            linkStatus.text = ""
+            return
+        }
+        when (link.estado) {
+            EnlaceCliente.Estado.CONECTADO -> {
+                linkStatus.setText(R.string.link_connected)
+                linkStatus.setTextColor(COLOR_OK)
+            }
+            EnlaceCliente.Estado.CONECTANDO -> {
+                linkStatus.setText(R.string.link_connecting)
+                linkStatus.setTextColor(COLOR_WARNING)
+            }
+            EnlaceCliente.Estado.DESCONECTADO -> {
+                linkStatus.setText(R.string.link_disconnected)
+                linkStatus.setTextColor(COLOR_OFF)
+            }
+        }
+    }
+
+    private fun withBluetoothPermission(action: () -> Unit) {
+        if (hasBluetoothPermissions()) {
+            action()
+            return
+        }
+        afterBluetoothPermission = action
+        AlertDialog.Builder(this)
+            .setTitle(R.string.hid_permissions_title)
+            .setMessage(R.string.hid_permissions_explanation)
+            .setPositiveButton(R.string.permissions_continue) { _, _ ->
+                requestPermissions(BLUETOOTH_PERMISSIONS, BLUETOOTH_PERMISSIONS_REQUEST)
+            }
+            .setNegativeButton(R.string.permissions_cancel) { _, _ -> afterBluetoothPermission = null }
+            .show()
     }
 
     private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
@@ -242,6 +328,7 @@ class MainActivity : Activity() {
         if (hidRemote == null) return
         status.connectedAddress?.let { address ->
             prefs.edit().putString(KEY_MOTOROLA_ADDRESS, address).apply()
+            startLinkIfPossible()
         }
         val connected = status.connectedName != null
         if (connected && !wasConnected) {
@@ -317,8 +404,11 @@ class MainActivity : Activity() {
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == BLUETOOTH_PERMISSIONS_REQUEST) {
+            val action = afterBluetoothPermission ?: ::startMotorola
+            afterBluetoothPermission = null
             if (hasBluetoothPermissions()) {
-                startMotorola()
+                action()
+                startLinkIfPossible()
             } else {
                 Toast.makeText(this, R.string.hid_permissions_needed, Toast.LENGTH_LONG).show()
             }
@@ -352,6 +442,11 @@ class MainActivity : Activity() {
         private const val MENU_TARGET_GROUP = 1
         private const val MENU_THIS_PHONE = 1
         private const val MENU_MOTOROLA = 2
+        private const val MENU_VOICE_GROUP = 2
+        private const val MENU_VOICE_PHONE = 3
+        private const val MENU_VOICE_MOTOROLA = 4
+        private const val KEY_VOICE = "voz_en"
+        private const val COLOR_OFF = 0xFF9E9E9E.toInt()
         private const val COLOR_NORMAL = 0xFFFFFFFF.toInt()
         private const val COLOR_OK = 0xFF4CAF50.toInt()
         private const val COLOR_WARNING = 0xFFFFC107.toInt()

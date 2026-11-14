@@ -49,6 +49,11 @@
     <string name="motorola_disconnected_toast">Motorola desconectado. Reconectando…</string>
     <string name="motorola_not_connected">El Motorola no está conectado</string>
     <string name="motorola_pair_hint">En el Motorola: Ajustes, Bluetooth, vincular S40</string>
+    <string name="voice_this_phone">Voz en: este teléfono</string>
+    <string name="voice_motorola">Voz en: Motorola</string>
+    <string name="link_connected">Enlace ●</string>
+    <string name="link_connecting">Enlace …</string>
+    <string name="link_disconnected">Enlace ○</string>
     <string-array name="speech_hours">
         <item>doce</item><item>una</item><item>dos</item><item>tres</item>
         <item>cuatro</item><item>cinco</item><item>seis</item><item>siete</item>

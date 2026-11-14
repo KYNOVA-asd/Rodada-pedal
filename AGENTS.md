@@ -30,8 +30,14 @@ adelante, comandos de voz y notificaciones.
 - Kotlin, vistas XML simples o Compose mínimo; elige lo más ligero.
 - Gradle con wrapper (gradlew) incluido en el repo.
 - minSdk 33. compileSdk y targetSdk: la plataforma instalada en el SDK.
-- Un solo módulo: app.
-- Paquete: com.rodada.app
+- Dos módulos:
+  - app: Rodada, para el S40. Paquete com.rodada.app.
+  - companion: "Rodada Enlace", para el Motorola del usuario.
+    Paquete com.rodada.companion.
+- Protocolo entre los dos (Bluetooth clásico RFCOMM, mensajes de texto):
+  shared/kotlin/com/rodada/enlace/Enlace.kt, documentado ahí. Los dos
+  módulos lo compilan como fuente compartida (sourceSets). Si cambias el
+  formato, sube Enlace.VERSION. El Motorola escucha; el S40 se conecta.
 
 ## Comandos
 
@@ -39,9 +45,14 @@ Compilar:
 
     gradlew assembleDebug
 
-Instalar en el S40:
+Instalar en el S40 (con los dos teléfonos conectados, usa -s con el
+serial; el del S40 es S404823093183):
 
-    adb install -r app\build\outputs\apk\debug\app-debug.apk
+    adb -s S404823093183 install -r app\build\outputs\apk\debug\app-debug.apk
+
+Instalar Rodada Enlace en el Motorola:
+
+    adb -s <serial del Motorola> install -r companion\build\outputs\apk\debug\companion-debug.apk
 
 Ver registros:
 

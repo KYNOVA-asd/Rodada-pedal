@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Rodada Enlace</string>
+    <string name="start">Activar enlace</string>
+    <string name="stop">Detener enlace</string>
+    <string name="state_off">Enlace apagado</string>
+    <string name="state_waiting">Esperando al S40…</string>
+    <string name="state_connected">Conectado con %1$s</string>
+    <string name="state_error">Error: %1$s</string>
+    <string name="error_bluetooth_off">enciende el Bluetooth</string>
+    <string name="error_listen">no se pudo abrir el canal Bluetooth</string>
+    <string name="notification_channel">Enlace con el S40</string>
+    <string name="notification_title">Rodada Enlace</string>
+    <string name="permissions_title">Permisos del enlace</string>
+    <string name="permissions_explanation">Rodada Enlace usa Bluetooth para recibir órdenes del S40 y una notificación fija mientras el enlace está activo. Nada sale a internet.</string>
+    <string name="permissions_continue">Continuar</string>
+    <string name="permissions_cancel">Cancelar</string>
+    <string name="permissions_needed">Sin el permiso de dispositivos cercanos no funciona el enlace.</string>
+    <string name="tts_missing">Descarga una voz en español en los ajustes del teléfono.</string>
+</resources>

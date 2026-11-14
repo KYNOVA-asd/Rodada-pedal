@@ -18,6 +18,11 @@ android {
         versionName = "0.1"
     }
 
+    sourceSets {
+        // Protocolo Rodada Enlace, compartido con el módulo companion.
+        getByName("main").java.srcDir("../shared/kotlin")
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
