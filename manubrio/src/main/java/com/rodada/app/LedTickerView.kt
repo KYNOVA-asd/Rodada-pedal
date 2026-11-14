@@ -180,7 +180,9 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
 
         /** Mayúsculas, sin acentos (salvo Ñ), solo caracteres de la fuente. */
         private fun normalizar(texto: String): String {
-            val conMarca = texto.uppercase()
+            // \p{Cf}: caracteres invisibles de formato (por ejemplo, los que rodean un
+            // número de teléfono); si no se quitan, salen como "?".
+            val conMarca = texto.replace(Regex("\\p{Cf}"), "").uppercase()
                 .replace('–', '-').replace('—', '-').replace('_', ' ').replace('×', 'X')
                 .replace('|', '/').replace('[', '(').replace(']', ')').replace('·', '-')
                 .replace('Ñ', '\u0001')

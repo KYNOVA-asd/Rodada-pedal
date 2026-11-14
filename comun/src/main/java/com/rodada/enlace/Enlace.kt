@@ -45,13 +45,23 @@ import java.util.UUID
  *                              (versión 4).
  * - LLAMADA_FIN\tid            Motorola → S40: dejó de sonar (contestada, rechazada
  *                              o colgada) (versión 4).
+ * - LLAMADA_CURSO\tid\tapp\tnombre\taltavoz\tsilenciar
+ *                              Motorola → S40: la llamada se contestó y está en
+ *                              curso. altavoz / silenciar = 1 si su notificación
+ *                              tiene ese botón (versión 7).
+ * - RESPONDER\tid\taccion      S40 → Motorola: accion es CONTESTAR, RECHAZAR, COLGAR,
+ *                              ALTAVOZ o SILENCIAR; el Motorola aprieta ese botón
+ *                              de la notificación de la llamada (versión 7).
+ * - BUSCAR                     Ambos lados: "buscar mi teléfono", el otro suena
+ *                              fuerte unos segundos (versión 8).
+ * - BUSCAR_FIN                 Ambos lados: dejar de sonar (versión 8).
  *
  * Privacidad: el contenido de NOTIF, DECIR y NAV no se guarda en disco ni en logs.
  */
 object Enlace {
     val UUID: UUID = java.util.UUID.fromString("6f1c2a4e-8d3b-4c55-9a1e-52d0a7c3e901")
     const val NOMBRE_SERVICIO = "Rodada Enlace"
-    const val VERSION = 4
+    const val VERSION = 8
     const val MAX_LINEA = 2048
     const val MAX_APP = 40
     const val MAX_TITULO = 80
@@ -72,6 +82,18 @@ sealed class Mensaje {
     object NavFin : Mensaje()
     data class Llamada(val id: String, val app: String, val nombre: String) : Mensaje()
     data class LlamadaFin(val id: String) : Mensaje()
+    data class LlamadaEnCurso(
+        val id: String,
+        val app: String,
+        val nombre: String,
+        val altavoz: Boolean,
+        val silenciar: Boolean
+    ) : Mensaje()
+    object Buscar : Mensaje()
+    object BuscarFin : Mensaje()
+    data class Responder(val id: String, val accion: Accion) : Mensaje() {
+        enum class Accion { CONTESTAR, RECHAZAR, COLGAR, ALTAVOZ, SILENCIAR }
+    }
 
     /** Línea lista para enviar, con el '\n' final. */
     fun codificar(): String {
@@ -84,6 +106,10 @@ sealed class Mensaje {
             NavFin -> listOf("NAV_FIN")
             is Llamada -> listOf("LLAMADA", id, app, nombre)
             is LlamadaFin -> listOf("LLAMADA_FIN", id)
+            is LlamadaEnCurso -> listOf("LLAMADA_CURSO", id, app, nombre, if (altavoz) "1" else "0", if (silenciar) "1" else "0")
+            is Responder -> listOf("RESPONDER", id, accion.name)
+            Buscar -> listOf("BUSCAR")
+            BuscarFin -> listOf("BUSCAR_FIN")
         }
         return campos.joinToString("\t") { escapar(it) } + "\n"
     }
@@ -111,6 +137,15 @@ sealed class Mensaje {
                 "NAV_FIN" -> NavFin
                 "LLAMADA" -> if (campos.size >= 4) Llamada(campos[1], campos[2], campos[3]) else null
                 "LLAMADA_FIN" -> if (campos.size >= 2) LlamadaFin(campos[1]) else null
+                "BUSCAR" -> Buscar
+                "BUSCAR_FIN" -> BuscarFin
+                "LLAMADA_CURSO" -> if (campos.size >= 5) {
+                    LlamadaEnCurso(campos[1], campos[2], campos[3], campos[4] == "1", campos.getOrElse(5) { "0" } == "1")
+                } else null
+                "RESPONDER" -> {
+                    val accion = Responder.Accion.entries.firstOrNull { it.name == campos.getOrNull(2) }
+                    if (campos.size >= 3 && accion != null) Responder(campos[1], accion) else null
+                }
                 else -> null
             }
         }

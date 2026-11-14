@@ -26,6 +26,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.rodada.enlace.Mensaje
 import com.rodada.enlace.SesionMusica
+import com.rodada.enlace.Timbre
 
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -55,7 +56,7 @@ class MainActivity : Activity() {
     private var linkSong: Mensaje.Cancion? = null
     /** Última instrucción de navegación, para vibrar solo cuando cambia la maniobra. */
     private var lastManeuver: String? = null
-    private val dimScreen = Runnable { if (currentCall == null) setBrightness(DIM_BRIGHTNESS) }
+    private val dimScreen = Runnable { if (currentCall == null || callActive) setBrightness(DIM_BRIGHTNESS) }
     private var wakeOnUp = false
     /** Lo que suena en este S40 (solo con destino "este teléfono" y acceso concedido). */
     private var localMusic: SesionMusica? = null
@@ -90,7 +91,7 @@ class MainActivity : Activity() {
             override fun onDown(e: MotionEvent) = true
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 when {
-                    currentCall != null -> vibrator.cancel()
+                    currentCall != null && !callActive -> vibrator.cancel()
                     page == Page.MAP -> openMap()
                     page == Page.NOTICES -> readShownNotice()
                     unread > 0 -> {
@@ -181,6 +182,7 @@ class MainActivity : Activity() {
         enlace?.detener()
         localMusic?.detener()
         if (currentCall != null) vibrator.cancel()
+        finder.detener()
         super.onDestroy()
     }
 
@@ -266,6 +268,25 @@ class MainActivity : Activity() {
     }
 
     private fun handleMusicControl(zone: MusicWheelView.Zone) {
+        // Llamada sonando: derecha contesta, izquierda rechaza, centro calla la vibración.
+        // Llamada en curso: izquierda cuelga, centro altavoz, derecha silenciar. + y − son volumen.
+        if (currentCall != null) {
+            val action = when (zone) {
+                MusicWheelView.Zone.NEXT ->
+                    if (callActive) Mensaje.Responder.Accion.SILENCIAR else Mensaje.Responder.Accion.CONTESTAR
+                MusicWheelView.Zone.PREVIOUS ->
+                    if (callActive) Mensaje.Responder.Accion.COLGAR else Mensaje.Responder.Accion.RECHAZAR
+                MusicWheelView.Zone.CENTER -> if (callActive) Mensaje.Responder.Accion.ALTAVOZ else null
+                else -> null
+            }
+            when {
+                action != null -> { callAction(action); return }
+                zone == MusicWheelView.Zone.CENTER || zone == MusicWheelView.Zone.NEXT -> {
+                    vibrator.cancel()
+                    return
+                }
+            }
+        }
         if (isMotorolaTarget()) {
             val remote = hidRemote
             if (remote == null || !remote.isConnected) {
@@ -313,8 +334,10 @@ class MainActivity : Activity() {
             menu.add(MENU_VOICE_GROUP, MENU_VOICE_MOTOROLA, 3, R.string.voice_motorola)
             menu.setGroupCheckable(MENU_VOICE_GROUP, true, true)
             menu.findItem(if (isVoiceOnMotorola()) MENU_VOICE_MOTOROLA else MENU_VOICE_PHONE).isChecked = true
+            menu.add(MENU_FIND_GROUP, MENU_FIND, 4, if (findingMotorola) R.string.menu_find_stop else R.string.menu_find)
             setOnMenuItemClickListener { item ->
                 when (item.itemId) {
+                    MENU_FIND -> toggleFindMotorola()
                     MENU_THIS_PHONE -> useThisPhone()
                     MENU_MOTOROLA -> onMotorolaChosen()
                     MENU_VOICE_PHONE -> prefs.edit().putString(KEY_VOICE, TARGET_PHONE).apply()
@@ -360,6 +383,7 @@ class MainActivity : Activity() {
 
     /** auto = llegó sola: vuelve al centro a los [NOTICE_MS]. Abierta a mano se queda. */
     private fun displayNotice(index: Int, auto: Boolean = true) {
+        if (currentCall != null) return
         val notif = notices[index]
         findViewById<LedTextView>(R.id.notice_app).text =
             if (notices.size > 1) getString(R.string.notice_position, notif.app, index + 1, notices.size) else notif.app
@@ -475,8 +499,14 @@ class MainActivity : Activity() {
                 is Mensaje.Nav -> showNav(mensaje)
                 Mensaje.NavFin -> hideNav()
                 is Mensaje.Llamada -> showCall(mensaje)
+                is Mensaje.LlamadaEnCurso -> showActiveCall(mensaje)
+                Mensaje.Buscar -> ringFinder()
+                Mensaje.BuscarFin -> {
+                    finder.detener()
+                    findingMotorola = false
+                }
                 is Mensaje.LlamadaFin -> endCall(mensaje.id)
-                is Mensaje.Hola, is Mensaje.Decir -> Unit
+                is Mensaje.Hola, is Mensaje.Decir, is Mensaje.Responder -> Unit
             }
         }
         enlace = link
@@ -554,8 +584,61 @@ class MainActivity : Activity() {
         updateTicker()
     }
 
+    /** Suena cuando el Motorola busca este S40. */
+    private val finder by lazy {
+        Timbre(this).apply {
+            alDetener = {
+                enlace?.enviar(Mensaje.BuscarFin)
+                findWakeLock?.let { if (it.isHeld) it.release() }
+                findWakeLock = null
+                if (page == Page.NOTICES && currentCall == null) showPage(Page.CENTER)
+            }
+        }
+    }
+    private var findWakeLock: android.os.PowerManager.WakeLock? = null
+    /** Se pidió que el Motorola suene (para el texto del menú). */
+    private var findingMotorola = false
+    private val findingMotorolaOff = Runnable { findingMotorola = false }
+
+    /** El Motorola busca este S40: alarma fuerte, pantalla encendida y aviso. */
+    private fun ringFinder() {
+        finder.sonar()
+        if (findWakeLock == null) {
+            @Suppress("DEPRECATION")
+            findWakeLock = getSystemService(android.os.PowerManager::class.java).newWakeLock(
+                android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "Rodada:buscar"
+            ).apply { acquire(Timbre.DURACION_MS) }
+        }
+        if (currentCall == null) {
+            findViewById<LedTextView>(R.id.notice_app).text = ""
+            findViewById<LedTextView>(R.id.notice_title).setText(R.string.find_title)
+            findViewById<LedTextView>(R.id.notice_text).setText(R.string.find_touch_to_stop)
+            showPage(Page.NOTICES)
+        }
+        wakeScreen()
+    }
+
+    /** Menú ☰: que suene el Motorola (o que deje de sonar). */
+    private fun toggleFindMotorola() {
+        val link = enlace
+        if (link == null || !link.conectado) {
+            Toast.makeText(this, R.string.find_no_link, Toast.LENGTH_SHORT).show()
+            return
+        }
+        findingMotorola = !findingMotorola
+        link.enviar(if (findingMotorola) Mensaje.Buscar else Mensaje.BuscarFin)
+        handler.removeCallbacks(findingMotorolaOff)
+        if (findingMotorola) handler.postDelayed(findingMotorolaOff, Timbre.DURACION_MS)
+        Toast.makeText(this, if (findingMotorola) R.string.find_sent else R.string.find_stopped, Toast.LENGTH_SHORT).show()
+    }
+
     /** Llamada sonando en el Motorola; el aviso queda fijo hasta LLAMADA_FIN. */
     private var currentCall: Mensaje.Llamada? = null
+    /** Llamada que rechazaste con la rueda, para mostrar "TE MARCÓ" al terminar. */
+    private var rejectedCallId: String? = null
+    /** false = sonando; true = contestada (en curso). */
+    private var callActive = false
 
     /** "LLAMADA DE NOMBRE" en grande, vibración larga repetida y pantalla encendida. */
     private fun showCall(call: Mensaje.Llamada) {
@@ -565,6 +648,8 @@ class MainActivity : Activity() {
         findViewById<LedTextView>(R.id.notice_title).setText(R.string.call_from)
         findViewById<LedTextView>(R.id.notice_text).text = name
         showPage(Page.NOTICES)
+        callActive = false
+        findViewById<MusicWheelView>(R.id.music_wheel).callMode = MusicWheelView.CallMode.RINGING
         // Mientras suena: brillo al máximo, sin volver a tenue ni al centro.
         setBrightness(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL)
         handler.removeCallbacks(dimScreen)
@@ -574,12 +659,54 @@ class MainActivity : Activity() {
         say(getString(R.string.speech_call, name))
     }
 
-    private fun endCall(id: String) {
-        if (currentCall?.id != id) return
-        currentCall = null
+    /** Llamada contestada: "HABLANDO CON nombre" y la rueda pasa a colgar y altavoz. */
+    private fun showActiveCall(call: Mensaje.LlamadaEnCurso) {
+        currentCall = Mensaje.Llamada(call.id, call.app, call.nombre)
+        callActive = true
         vibrator.cancel()
-        showPage(Page.CENTER)
+        findViewById<LedTextView>(R.id.notice_app).text = call.app
+        findViewById<LedTextView>(R.id.notice_title).setText(R.string.call_active)
+        findViewById<LedTextView>(R.id.notice_text).text = call.nombre.ifBlank { getString(R.string.call_unknown) }
+        showPage(Page.NOTICES)
+        val wheel = findViewById<MusicWheelView>(R.id.music_wheel)
+        wheel.speakerAvailable = call.altavoz
+        wheel.muteAvailable = call.silenciar
+        wheel.callMode = MusicWheelView.CallMode.ACTIVE
         wakeScreen()
+    }
+
+    /** Rueda del S40: el Motorola aprieta ese botón en la notificación de la llamada. */
+    private fun callAction(action: Mensaje.Responder.Accion) {
+        val call = currentCall ?: return
+        vibrator.cancel()
+        if (enlace?.enviar(Mensaje.Responder(call.id, action)) != true) {
+            Toast.makeText(this, R.string.motorola_not_connected, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (action == Mensaje.Responder.Accion.RECHAZAR) rejectedCallId = call.id
+    }
+
+    private fun endCall(id: String) {
+        val endedCall = currentCall
+        if (endedCall?.id != id) return
+        currentCall = null
+        callActive = false
+        findViewById<MusicWheelView>(R.id.music_wheel).callMode = MusicWheelView.CallMode.NONE
+        vibrator.cancel()
+        wakeScreen()
+        val call = endedCall
+        if (rejectedCallId == id) {
+            // Rechazada desde la rueda: queda el aviso "TE MARCÓ nombre" con las notificaciones.
+            rejectedCallId = null
+            notices.addFirst(
+                Mensaje.Notif(call.app, getString(R.string.call_rejected), call.nombre.ifBlank { getString(R.string.call_unknown) })
+            )
+            while (notices.size > MAX_NOTICES) notices.removeLast()
+            noticeIndex = 0
+            displayNotice(0)
+        } else {
+            showPage(Page.CENTER)
+        }
     }
 
     /** Última navegación recibida, para mostrar la velocidad en su línea de abajo. */
@@ -675,6 +802,10 @@ class MainActivity : Activity() {
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
         // Cambiar el brillo a mitad de un toque hace que Android cancele el gesto. Si la
         // pantalla está tenue, se ilumina al levantar el dedo y el gesto se completa.
+        if (event.actionMasked == MotionEvent.ACTION_DOWN && finder.sonando) {
+            finder.detener()
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN ->
                 if (window.attributes.screenBrightness == DIM_BRIGHTNESS) wakeOnUp = true else wakeScreen()
@@ -896,6 +1027,8 @@ class MainActivity : Activity() {
         private const val MENU_VOICE_GROUP = 2
         private const val MENU_VOICE_PHONE = 3
         private const val MENU_VOICE_MOTOROLA = 4
+        private const val MENU_FIND_GROUP = 3
+        private const val MENU_FIND = 5
         private const val KEY_VOICE = "voz_en"
         private const val NOTICE_MS = 20_000L
         private const val MAPS_PACKAGE = "com.google.android.apps.maps"

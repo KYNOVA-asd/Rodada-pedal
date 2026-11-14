@@ -28,8 +28,8 @@ sin tocar la pantalla ni quitarse el casco.
 | Sensores       | GPS                           |
 
 Apps quitadas por ADB del usuario principal (restaurables): Chrome, Meet,
-Drive, Google TV, Home, Google Go, Asistente, YouTube, Google One y tres
-componentes de Facebook.
+Drive, Google TV, Home, Google Go, Asistente, YouTube, Google One, Gmail y
+tres componentes de Facebook.
 
 Apps conservadas: Play Store, Google Maps, YouTube Music, Servicios de
 Google, WebView y el motor de voz de Android.

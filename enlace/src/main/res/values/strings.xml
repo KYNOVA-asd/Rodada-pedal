@@ -28,5 +28,13 @@
     <string name="apps_hint">Solo las apps marcadas mandan sus notificaciones al S40. Nada sale a internet.</string>
     <string name="read_title">Leer en voz alta el título</string>
     <string name="voice_notification">%1$s: %2$s</string>
+    <string name="find_s40">Buscar S40 (que suene)</string>
+    <string name="find_sent">El S40 está sonando</string>
+    <string name="find_no_link">El S40 no está conectado. Abre Rodada en el S40.</string>
+    <string name="find_ringing_title">Te están buscando desde el S40</string>
+    <string name="find_ringing_text">Toca para dejar de sonar</string>
+    <string name="find_stop">Detener</string>
+    <string name="find_banner">TE ESTÁN BUSCANDO\nToca para dejar de sonar</string>
+    <string name="find_channel">Te están buscando</string>
     <string name="tts_missing">Descarga una voz en español en los ajustes del teléfono.</string>
 </resources>

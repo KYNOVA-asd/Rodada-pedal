@@ -16,4 +16,13 @@ object EnlaceEstado {
         }
 
     var oyente: ((Estado) -> Unit)? = null
+
+    /** El S40 está buscando este teléfono (suena la alarma). */
+    var buscando = false
+        set(value) {
+            field = value
+            oyenteBuscando?.invoke(value)
+        }
+
+    var oyenteBuscando: ((Boolean) -> Unit)? = null
 }

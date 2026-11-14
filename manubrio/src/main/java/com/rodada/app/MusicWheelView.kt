@@ -15,6 +15,37 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
     enum class Zone { UP, DOWN, PREVIOUS, NEXT, CENTER }
 
     var onControl: ((Zone) -> Unit)? = null
+
+    /**
+     * NONE: música. RINGING: izquierda roja ✕ (rechazar) y derecha verde ✓ (contestar).
+     * ACTIVE: izquierda roja ✕ (colgar); si están disponibles, centro 🔊 (altavoz) y
+     * derecha micrófono tachado (silenciar).
+     */
+    enum class CallMode { NONE, RINGING, ACTIVE }
+
+    var speakerAvailable = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    var muteAvailable = false
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    var callMode = CallMode.NONE
+        set(value) {
+            if (field != value) {
+                field = value
+                invalidate()
+            }
+        }
+    private val declinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(211, 47, 47) }
+    private val answerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(30, 158, 74) }
+    private val speakerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(46, 168, 255) }
+    private val mutePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(245, 124, 0) }
     private var pressedZone: Zone? = null
     private var clickZone: Zone? = null
 
@@ -54,9 +85,57 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
         canvas.drawLine(cx, topY - arm, cx, topY + arm, symbolPaint)
         canvas.drawLine(cx - arm, bottomY, cx + arm, bottomY, symbolPaint)
 
-        drawTrack(canvas, cx - radius * 0.64f, cy, radius * 0.14f, previous = true)
-        drawTrack(canvas, cx + radius * 0.64f, cy, radius * 0.14f, previous = false)
-        drawPlayPause(canvas, cx, cy, radius * 0.12f)
+        if (callMode != CallMode.NONE) {
+            drawCallButtons(canvas, cx, cy, radius)
+        } else {
+            drawTrack(canvas, cx - radius * 0.64f, cy, radius * 0.14f, previous = true)
+            drawTrack(canvas, cx + radius * 0.64f, cy, radius * 0.14f, previous = false)
+        }
+        if (!(callMode == CallMode.ACTIVE && speakerAvailable)) drawPlayPause(canvas, cx, cy, radius * 0.12f)
+    }
+
+    private fun drawCallButtons(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        val left = cx - radius * 0.64f
+        val right = cx + radius * 0.64f
+        val r = radius * 0.27f
+        canvas.drawCircle(left, cy, r, declinePaint)
+        val previousWidth = symbolPaint.strokeWidth
+        symbolPaint.strokeWidth = radius * 0.05f
+        val a = r * 0.45f
+        // ✕ rechazar o colgar
+        canvas.drawLine(left - a, cy - a, left + a, cy + a, symbolPaint)
+        canvas.drawLine(left - a, cy + a, left + a, cy - a, symbolPaint)
+        if (callMode == CallMode.RINGING) {
+            // ✓ contestar
+            canvas.drawCircle(right, cy, r, answerPaint)
+            canvas.drawLine(right - a, cy, right - a * 0.2f, cy + a * 0.8f, symbolPaint)
+            canvas.drawLine(right - a * 0.2f, cy + a * 0.8f, right + a, cy - a * 0.7f, symbolPaint)
+        } else if (speakerAvailable) {
+            // 🔊 altavoz, en el centro
+            canvas.drawCircle(cx, cy, radius * 0.30f, speakerPaint)
+            val s = radius * 0.08f
+            val body = Path().apply {
+                moveTo(cx - s * 2f, cy - s * 0.8f)
+                lineTo(cx - s, cy - s * 0.8f)
+                lineTo(cx + s * 0.4f, cy - s * 2f)
+                lineTo(cx + s * 0.4f, cy + s * 2f)
+                lineTo(cx - s, cy + s * 0.8f)
+                lineTo(cx - s * 2f, cy + s * 0.8f)
+                close()
+            }
+            canvas.drawPath(body, fillPaint)
+            canvas.drawArc(cx - s * 0.2f, cy - s * 1.4f, cx + s * 2.2f, cy + s * 1.4f, -45f, 90f, false, symbolPaint)
+        }
+        if (callMode == CallMode.ACTIVE && muteAvailable) {
+            // Micrófono tachado: silenciar, a la derecha.
+            canvas.drawCircle(right, cy, r, mutePaint)
+            val m = r * 0.18f
+            canvas.drawRoundRect(right - m, cy - m * 2.6f, right + m, cy + m * 0.6f, m, m, fillPaint)
+            canvas.drawArc(right - m * 2f, cy - m * 1.6f, right + m * 2f, cy + m * 1.6f, 0f, 180f, false, symbolPaint)
+            canvas.drawLine(right, cy + m * 1.6f, right, cy + m * 2.6f, symbolPaint)
+            canvas.drawLine(right - m * 2.6f, cy - m * 2.6f, right + m * 2.6f, cy + m * 2.6f, symbolPaint)
+        }
+        symbolPaint.strokeWidth = previousWidth
     }
 
     private fun drawTrack(canvas: Canvas, x: Float, y: Float, size: Float, previous: Boolean) {

@@ -71,8 +71,17 @@
     <string name="nav_no_route">Sin ruta</string>
     <string name="nav_tap_to_open">Toca para abrir Maps</string>
     <string name="call_from">LLAMADA DE</string>
+    <string name="call_active">HABLANDO CON</string>
+    <string name="call_rejected">TE MARCÓ</string>
     <string name="call_unknown">Desconocido</string>
     <string name="speech_call">Llamada de %1$s</string>
+    <string name="menu_find">Buscar Motorola (que suene)</string>
+    <string name="menu_find_stop">Dejar de buscar Motorola</string>
+    <string name="find_sent">El Motorola está sonando</string>
+    <string name="find_stopped">El Motorola dejó de sonar</string>
+    <string name="find_no_link">Sin enlace con el Motorola</string>
+    <string name="find_title">TE ESTAN BUSCANDO</string>
+    <string name="find_touch_to_stop">TOCA PARA PARAR</string>
     <string name="speech_no_notification">No tienes notificaciones.</string>
     <string name="voice_this_phone">Voz en: este teléfono</string>
     <string name="voice_motorola">Voz en: Motorola</string>

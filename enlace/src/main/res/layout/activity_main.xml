@@ -7,6 +7,20 @@
     android:orientation="vertical"
     android:padding="20dp">
 
+    <!-- Solo mientras el S40 busca este teléfono. -->
+    <Button
+        android:id="@+id/finding_banner"
+        android:layout_width="match_parent"
+        android:layout_height="160dp"
+        android:layout_marginBottom="16dp"
+        android:background="#D32F2F"
+        android:text="@string/find_banner"
+        android:textAllCaps="false"
+        android:textColor="#FFFFFF"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -30,6 +44,15 @@
         android:layout_marginTop="24dp"
         android:textAllCaps="false"
         android:textSize="20sp" />
+
+    <Button
+        android:id="@+id/find_s40"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:layout_marginTop="12dp"
+        android:text="@string/find_s40"
+        android:textAllCaps="false"
+        android:textSize="18sp" />
 
     <TextView
         android:id="@+id/listener_state"

@@ -44,14 +44,43 @@ class MainActivity : Activity() {
                     )
             )
         }
+        prepararBuscando()
+        findViewById<Button>(R.id.finding_banner).setOnClickListener { EnlaceService.actual?.dejarDeSonar() }
+        findViewById<Button>(R.id.find_s40).setOnClickListener {
+            val enviado = EnlaceService.actual?.buscarS40() ?: false
+            Toast.makeText(this, if (enviado) R.string.find_sent else R.string.find_no_link, Toast.LENGTH_SHORT).show()
+        }
         findViewById<Button>(R.id.choose_apps).setOnClickListener {
             startActivity(Intent(this, AppsActivity::class.java))
         }
         if (Ajustes(this).enlaceActivo && tienePermisos() && !servicioActivo()) activar()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        prepararBuscando()
+    }
+
+    /** Abierta por "te están buscando": se ve encima del bloqueo y enciende la pantalla. */
+    private fun prepararBuscando() {
+        val buscando = intent?.getBooleanExtra(EXTRA_BUSCANDO, false) == true && EnlaceEstado.buscando
+        setShowWhenLocked(buscando)
+        setTurnScreenOn(buscando)
+    }
+
+    private fun mostrarBuscando(buscando: Boolean) {
+        findViewById<Button>(R.id.finding_banner).visibility = if (buscando) android.view.View.VISIBLE else android.view.View.GONE
+        if (!buscando) {
+            setShowWhenLocked(false)
+            setTurnScreenOn(false)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        EnlaceEstado.oyenteBuscando = ::mostrarBuscando
+        mostrarBuscando(EnlaceEstado.buscando)
         EnlaceEstado.oyente = ::mostrar
         mostrar(EnlaceEstado.estado)
         val permitido = getSystemService(NotificationManager::class.java)
@@ -63,6 +92,7 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        EnlaceEstado.oyenteBuscando = null
         EnlaceEstado.oyente = null
         super.onPause()
     }
@@ -108,6 +138,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        const val EXTRA_BUSCANDO = "buscando"
         private const val PERMISOS = 1
     }
 }

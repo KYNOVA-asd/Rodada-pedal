@@ -17,8 +17,9 @@ class AvisosService : NotificationListenerService() {
     private lateinit var ajustes: Ajustes
     private val ultimos = HashMap<String, Int>()
     private var claveNavegacion: String? = null
-    /** Clave de notificación → id de llamada que está sonando (solo en memoria). */
-    private val llamadasSonando = HashMap<String, String>()
+    /** Llamadas activas por clave de notificación (solo en memoria). */
+    private data class Llamada(val id: String, var enCurso: Boolean)
+    private val llamadas = HashMap<String, Llamada>()
     private var numeroLlamada = 0
 
     override fun onCreate() {
@@ -37,6 +38,28 @@ class AvisosService : NotificationListenerService() {
     override fun onDestroy() {
         if (actual === this) actual = null
         super.onDestroy()
+    }
+
+    /**
+     * Al conectar el S40 (o al reiniciarse este servicio): manda la llamada que esté
+     * sonando o en curso, para que el S40 no pierda el control a mitad de llamada.
+     */
+    fun reenviarLlamadasActuales() {
+        val activas = try {
+            activeNotifications.orEmpty().filter {
+                it.packageName in ajustes.apps && it.notification.category == Notification.CATEGORY_CALL
+            }
+        } catch (_: SecurityException) {
+            return
+        }
+        for (sbn in activas) {
+            // Se olvida el estado enviado y se vuelve a evaluar: manda LLAMADA o LLAMADA_CURSO.
+            llamadas[sbn.key]?.let { anterior ->
+                llamadas.remove(sbn.key)
+                if (anterior.enCurso) llamadas[sbn.key] = Llamada(anterior.id, enCurso = false)
+            }
+            revisarLlamada(sbn)
+        }
     }
 
     /** Al conectar el S40: manda la indicación de Maps vigente sin esperar a que cambie. */
@@ -84,7 +107,7 @@ class AvisosService : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         ultimos.remove(sbn.key)
-        if (sbn.key in llamadasSonando) terminarLlamada(sbn.key)
+        if (sbn.key in llamadas) terminarLlamada(sbn.key)
         if (sbn.key == claveNavegacion) {
             claveNavegacion = null
             EnlaceService.actual?.enviar(Mensaje.NavFin)
@@ -93,35 +116,97 @@ class AvisosService : NotificationListenerService() {
     }
 
     /**
-     * Llamada de una app elegida (Teléfono, WhatsApp…): se manda LLAMADA mientras
-     * suena y LLAMADA_FIN cuando deja de sonar (contestada, rechazada o colgada).
-     * "Sonando" = CallStyle de tipo entrante; si la app no usa CallStyle, que tenga
-     * pantalla completa (así avisan las llamadas entrantes).
+     * Llamada de una app elegida (Teléfono, WhatsApp…), según su CallStyle:
+     * - entrante (sonando): LLAMADA; si la app no usa CallStyle, cuenta como entrante
+     *   si tiene pantalla completa;
+     * - en curso (contestada): LLAMADA_CURSO, con si hay botón de altavoz;
+     * - al quitarse la notificación: LLAMADA_FIN.
      */
     private fun revisarLlamada(sbn: StatusBarNotification) {
         val n = sbn.notification
         val tipo = n.extras.getInt(Notification.EXTRA_CALL_TYPE, 0)
         val sonando = if (tipo != 0) tipo == Notification.CallStyle.CALL_TYPE_INCOMING else n.fullScreenIntent != null
-        if (!sonando) {
-            if (sbn.key in llamadasSonando) terminarLlamada(sbn.key)
-            return
+        val enCurso = tipo == Notification.CallStyle.CALL_TYPE_ONGOING ||
+            (tipo == 0 && !sonando && sbn.key in llamadas)
+        val actual = llamadas[sbn.key]
+        when {
+            sonando && actual == null -> {
+                val id = (++numeroLlamada).toString()
+                llamadas[sbn.key] = Llamada(id, enCurso = false)
+                val enviado = EnlaceService.actual?.enviar(Mensaje.Llamada(id, app(sbn), nombre(n))) ?: false
+                Log.d(TAG, "llamada entrante de ${sbn.packageName} reenviada=$enviado")
+            }
+            enCurso && actual?.enCurso != true -> {
+                val llamada = actual ?: Llamada((++numeroLlamada).toString(), enCurso = true).also { llamadas[sbn.key] = it }
+                llamada.enCurso = true
+                val altavoz = buscarAccion(n, Mensaje.Responder.Accion.ALTAVOZ) != null
+                val silenciar = buscarAccion(n, Mensaje.Responder.Accion.SILENCIAR) != null
+                // Solo los textos de los botones (no hay datos privados), para ajustar las palabras.
+                Log.d(TAG, "llamada en curso; botones=${n.actions.orEmpty().map { it.title }}")
+                EnlaceService.actual?.enviar(Mensaje.LlamadaEnCurso(llamada.id, app(sbn), nombre(n), altavoz, silenciar))
+            }
         }
-        if (sbn.key in llamadasSonando) return
+    }
+
+    private fun app(sbn: StatusBarNotification) = Enlace.recortar(nombreApp(sbn.packageName), Enlace.MAX_APP)
+
+    private fun nombre(n: Notification): String {
         val persona = n.extras.getParcelable(Notification.EXTRA_CALL_PERSON, android.app.Person::class.java)
         val nombre = persona?.name?.toString()?.trim().orEmpty()
             .ifEmpty { n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty().trim() }
-        val id = (++numeroLlamada).toString()
-        llamadasSonando[sbn.key] = id
-        val enviado = EnlaceService.actual?.enviar(
-            Mensaje.Llamada(id, Enlace.recortar(nombreApp(sbn.packageName), Enlace.MAX_APP), Enlace.recortar(nombre, Enlace.MAX_TITULO))
-        ) ?: false
-        Log.d(TAG, "llamada entrante de ${sbn.packageName} reenviada=$enviado")
+        return Enlace.recortar(nombre, Enlace.MAX_TITULO)
+    }
+
+    /** Botón de la notificación para esa acción, buscado por su texto. */
+    private fun buscarAccion(n: Notification, accion: Mensaje.Responder.Accion): Notification.Action? {
+        val palabras = when (accion) {
+            Mensaje.Responder.Accion.CONTESTAR -> listOf("contest", "respond", "atender", "aceptar", "answer")
+            Mensaje.Responder.Accion.RECHAZAR -> listOf("rechaz", "declin", "ignorar", "decline")
+            Mensaje.Responder.Accion.COLGAR -> listOf("colgar", "finalizar", "terminar", "hang up", "end call")
+            Mensaje.Responder.Accion.ALTAVOZ -> listOf("altavoz", "bocina", "speaker")
+            Mensaje.Responder.Accion.SILENCIAR -> listOf("silenc", "mute", "micr")
+        }
+        return n.actions.orEmpty().firstOrNull { a -> palabras.any { it in a.title.toString().lowercase() } }
+    }
+
+    /**
+     * Aprieta un botón de la notificación de la llamada. Si no lo encuentra por su
+     * texto: contestar = el último, rechazar o colgar = el primero (orden de CallStyle);
+     * altavoz y silenciar no tienen respaldo (si la app no los ofrece, no se puede).
+     */
+    fun responderLlamada(id: String, accion: Mensaje.Responder.Accion) {
+        val clave = llamadas.entries.firstOrNull { it.value.id == id }?.key ?: return
+        val sbn = try {
+            activeNotifications.orEmpty().firstOrNull { it.key == clave }
+        } catch (_: SecurityException) {
+            null
+        } ?: return
+        val acciones = sbn.notification.actions.orEmpty()
+        val boton = buscarAccion(sbn.notification, accion) ?: when (accion) {
+            Mensaje.Responder.Accion.CONTESTAR -> acciones.lastOrNull()
+            Mensaje.Responder.Accion.RECHAZAR, Mensaje.Responder.Accion.COLGAR -> acciones.firstOrNull()
+            Mensaje.Responder.Accion.ALTAVOZ, Mensaje.Responder.Accion.SILENCIAR -> null
+        }
+        if (boton == null) {
+            Log.w(TAG, "llamada: sin botón para $accion")
+            return
+        }
+        // Contestar suele abrir la pantalla de llamada: se permite ese arranque desde aquí.
+        val opciones = android.app.ActivityOptions.makeBasic()
+            .setPendingIntentBackgroundActivityStartMode(android.app.ActivityOptions.MODE_BACKGROUND_ACTIVITY_START_ALLOWED)
+            .toBundle()
+        try {
+            boton.actionIntent.send(this, 0, null, null, null, null, opciones)
+            Log.d(TAG, "llamada: $accion enviado")
+        } catch (e: android.app.PendingIntent.CanceledException) {
+            Log.w(TAG, "llamada: el botón ya no es válido")
+        }
     }
 
     private fun terminarLlamada(clave: String) {
-        val id = llamadasSonando.remove(clave) ?: return
-        EnlaceService.actual?.enviar(Mensaje.LlamadaFin(id))
-        Log.d(TAG, "llamada dejó de sonar")
+        val llamada = llamadas.remove(clave) ?: return
+        EnlaceService.actual?.enviar(Mensaje.LlamadaFin(llamada.id))
+        Log.d(TAG, "llamada terminada")
     }
 
     /** Notificación fija de navegación paso a paso de Google Maps. */
