@@ -55,7 +55,8 @@ class MainActivity : Activity() {
     private var linkSong: Mensaje.Cancion? = null
     /** Última instrucción de navegación, para vibrar solo cuando cambia la maniobra. */
     private var lastManeuver: String? = null
-    private val dimScreen = Runnable { setBrightness(DIM_BRIGHTNESS) }
+    private val dimScreen = Runnable { if (currentCall == null) setBrightness(DIM_BRIGHTNESS) }
+    private var wakeOnUp = false
     /** Lo que suena en este S40 (solo con destino "este teléfono" y acceso concedido). */
     private var localMusic: SesionMusica? = null
     /** Páginas de la pantallita: MAPA ⟵ CENTRO ⟶ NOTIFICACIONES. */
@@ -76,6 +77,7 @@ class MainActivity : Activity() {
         window.setDecorFitsSystemWindows(false)
         hideSystemBars()
         setContentView(R.layout.activity_main)
+        applyOrientation(resources.configuration)
         speed = findViewById(R.id.speed)
         speedUnit = findViewById(R.id.speed_unit)
         distance = findViewById(R.id.distance)
@@ -88,6 +90,7 @@ class MainActivity : Activity() {
             override fun onDown(e: MotionEvent) = true
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 when {
+                    currentCall != null -> vibrator.cancel()
                     page == Page.MAP -> openMap()
                     page == Page.NOTICES -> readShownNotice()
                     unread > 0 -> {
@@ -109,7 +112,6 @@ class MainActivity : Activity() {
                 val start = e1 ?: return false
                 val dx = e2.x - start.x
                 val dy = e2.y - start.y
-                android.util.Log.d("RodadaGesto", "deslizar dx=${dx.toInt()} dy=${dy.toInt()} en $page")
                 val minPx = SWIPE_MIN_PX * resources.displayMetrics.density
                 if (-dy > minPx && -dy > kotlin.math.abs(dx)) {
                     // Deslizar hacia arriba: quitar el aviso y marcar todo como leído.
@@ -178,7 +180,47 @@ class MainActivity : Activity() {
         hidRemote?.stop()
         enlace?.detener()
         localMusic?.detener()
+        if (currentCall != null) vibrator.cancel()
         super.onDestroy()
+    }
+
+    override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+        super.onConfigurationChanged(newConfig)
+        applyOrientation(newConfig)
+    }
+
+    /**
+     * Vertical: pantallita arriba (55 %) y rueda abajo. De lado: pantallita a la
+     * izquierda (60 %) y rueda a la derecha. Mismo árbol de vistas, sin recrear nada.
+     */
+    private fun applyOrientation(config: android.content.res.Configuration) {
+        val landscape = config.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+        val root = findViewById<LinearLayout>(R.id.root)
+        root.orientation = if (landscape) LinearLayout.HORIZONTAL else LinearLayout.VERTICAL
+        val density = resources.displayMetrics.density
+        fun half(id: Int, weight: Float) {
+            val view = findViewById<android.view.View>(id)
+            val params = view.layoutParams as LinearLayout.LayoutParams
+            params.weight = weight
+            if (landscape) {
+                params.width = 0
+                params.height = LinearLayout.LayoutParams.MATCH_PARENT
+            } else {
+                params.width = LinearLayout.LayoutParams.MATCH_PARENT
+                params.height = 0
+            }
+            view.layoutParams = params
+        }
+        half(R.id.screen_half, if (landscape) 0.6f else 0.55f)
+        half(R.id.wheel_half, if (landscape) 0.4f else 0.45f)
+        // De lado, la pantallita deja 6 dp a la derecha en vez de abajo.
+        val screen = findViewById<android.view.View>(R.id.screen_half)
+        (screen.layoutParams as LinearLayout.LayoutParams).setMargins(
+            (12 * density).toInt(), (12 * density).toInt(),
+            ((if (landscape) 6 else 12) * density).toInt(),
+            ((if (landscape) 12 else 6) * density).toInt()
+        )
+        screen.requestLayout()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -329,7 +371,6 @@ class MainActivity : Activity() {
 
     /** Cambia de página; cancela la vuelta automática pendiente. */
     private fun showPage(target: Page) {
-        android.util.Log.d("RodadaGesto", "página $page -> $target")
         handler.removeCallbacks(hideNotice)
         page = target
         val visible = android.view.View.VISIBLE
@@ -420,6 +461,7 @@ class MainActivity : Activity() {
             if (estado != EnlaceCliente.Estado.CONECTADO) {
                 linkSong = null
                 hideNav()
+                currentCall?.let { endCall(it.id) }
             }
             showLinkStatus()
             updateTicker()
@@ -432,6 +474,8 @@ class MainActivity : Activity() {
                 }
                 is Mensaje.Nav -> showNav(mensaje)
                 Mensaje.NavFin -> hideNav()
+                is Mensaje.Llamada -> showCall(mensaje)
+                is Mensaje.LlamadaFin -> endCall(mensaje.id)
                 is Mensaje.Hola, is Mensaje.Decir -> Unit
             }
         }
@@ -508,6 +552,34 @@ class MainActivity : Activity() {
         targetStatus.setTextColor(COLOR_NORMAL)
         startLocalMusic()
         updateTicker()
+    }
+
+    /** Llamada sonando en el Motorola; el aviso queda fijo hasta LLAMADA_FIN. */
+    private var currentCall: Mensaje.Llamada? = null
+
+    /** "LLAMADA DE NOMBRE" en grande, vibración larga repetida y pantalla encendida. */
+    private fun showCall(call: Mensaje.Llamada) {
+        currentCall = call
+        val name = call.nombre.ifBlank { getString(R.string.call_unknown) }
+        findViewById<LedTextView>(R.id.notice_app).text = call.app
+        findViewById<LedTextView>(R.id.notice_title).setText(R.string.call_from)
+        findViewById<LedTextView>(R.id.notice_text).text = name
+        showPage(Page.NOTICES)
+        // Mientras suena: brillo al máximo, sin volver a tenue ni al centro.
+        setBrightness(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL)
+        handler.removeCallbacks(dimScreen)
+        if (vibrator.hasVibrator()) {
+            vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 800, 600), 0))
+        }
+        say(getString(R.string.speech_call, name))
+    }
+
+    private fun endCall(id: String) {
+        if (currentCall?.id != id) return
+        currentCall = null
+        vibrator.cancel()
+        showPage(Page.CENTER)
+        wakeScreen()
     }
 
     /** Última navegación recibida, para mostrar la velocidad en su línea de abajo. */
@@ -601,9 +673,15 @@ class MainActivity : Activity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
-            android.util.Log.d("RodadaGesto", "toque, brillo=${window.attributes.screenBrightness}")
-            wakeScreen()
+        // Cambiar el brillo a mitad de un toque hace que Android cancele el gesto. Si la
+        // pantalla está tenue, se ilumina al levantar el dedo y el gesto se completa.
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN ->
+                if (window.attributes.screenBrightness == DIM_BRIGHTNESS) wakeOnUp = true else wakeScreen()
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (wakeOnUp) {
+                wakeOnUp = false
+                handler.post { wakeScreen() }
+            }
         }
         return super.dispatchTouchEvent(event)
     }

@@ -120,7 +120,7 @@ class EnlaceService : Service() {
         Log.d(TAG, "recibido $mensaje")
         when (mensaje) {
             is Mensaje.Decir -> voz.decir(mensaje.texto)
-            is Mensaje.Hola, is Mensaje.Notif, is Mensaje.Cancion, is Mensaje.Nav, Mensaje.NavFin -> Unit
+            is Mensaje.Hola, is Mensaje.Notif, is Mensaje.Cancion, is Mensaje.Nav, Mensaje.NavFin, is Mensaje.Llamada, is Mensaje.LlamadaFin -> Unit
         }
     }
 

@@ -152,7 +152,7 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
     }
 
     private fun wheelRadius(): Float = min(
-        width * 0.35f,
+        width * 0.45f,
         height / 2f - 6f * resources.displayMetrics.density
     )
 

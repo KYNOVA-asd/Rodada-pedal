@@ -40,13 +40,18 @@ import java.util.UUID
  *                              ("3 min · 800 m · Llegada: 5:35 p. m."). Se manda
  *                              cuando cambia y al conectar (versión 3).
  * - NAV_FIN                    Motorola → S40: terminó la navegación (versión 3).
+ * - LLAMADA\tid\tapp\tnombre  Motorola → S40: está sonando una llamada entrante
+ *                              (Teléfono, WhatsApp…). id identifica la llamada
+ *                              (versión 4).
+ * - LLAMADA_FIN\tid            Motorola → S40: dejó de sonar (contestada, rechazada
+ *                              o colgada) (versión 4).
  *
  * Privacidad: el contenido de NOTIF, DECIR y NAV no se guarda en disco ni en logs.
  */
 object Enlace {
     val UUID: UUID = java.util.UUID.fromString("6f1c2a4e-8d3b-4c55-9a1e-52d0a7c3e901")
     const val NOMBRE_SERVICIO = "Rodada Enlace"
-    const val VERSION = 3
+    const val VERSION = 4
     const val MAX_LINEA = 2048
     const val MAX_APP = 40
     const val MAX_TITULO = 80
@@ -65,6 +70,8 @@ sealed class Mensaje {
     }
     data class Nav(val distancia: String, val instruccion: String, val resumen: String) : Mensaje()
     object NavFin : Mensaje()
+    data class Llamada(val id: String, val app: String, val nombre: String) : Mensaje()
+    data class LlamadaFin(val id: String) : Mensaje()
 
     /** Línea lista para enviar, con el '\n' final. */
     fun codificar(): String {
@@ -75,6 +82,8 @@ sealed class Mensaje {
             is Cancion -> listOf("CANCION", estado.name, artista, titulo)
             is Nav -> listOf("NAV", distancia, instruccion, resumen)
             NavFin -> listOf("NAV_FIN")
+            is Llamada -> listOf("LLAMADA", id, app, nombre)
+            is LlamadaFin -> listOf("LLAMADA_FIN", id)
         }
         return campos.joinToString("\t") { escapar(it) } + "\n"
     }
@@ -100,6 +109,8 @@ sealed class Mensaje {
                 }
                 "NAV" -> if (campos.size >= 3) Nav(campos[1], campos[2], campos.getOrElse(3) { "" }) else null
                 "NAV_FIN" -> NavFin
+                "LLAMADA" -> if (campos.size >= 4) Llamada(campos[1], campos[2], campos[3]) else null
+                "LLAMADA_FIN" -> if (campos.size >= 2) LlamadaFin(campos[1]) else null
                 else -> null
             }
         }

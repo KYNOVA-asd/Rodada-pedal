@@ -17,6 +17,9 @@ class AvisosService : NotificationListenerService() {
     private lateinit var ajustes: Ajustes
     private val ultimos = HashMap<String, Int>()
     private var claveNavegacion: String? = null
+    /** Clave de notificación → id de llamada que está sonando (solo en memoria). */
+    private val llamadasSonando = HashMap<String, String>()
+    private var numeroLlamada = 0
 
     override fun onCreate() {
         super.onCreate()
@@ -55,6 +58,10 @@ class AvisosService : NotificationListenerService() {
             reenviarNavegacion(sbn)
             return
         }
+        if (n.category == Notification.CATEGORY_CALL) {
+            revisarLlamada(sbn)
+            return
+        }
         if (n.flags and (Notification.FLAG_ONGOING_EVENT or Notification.FLAG_FOREGROUND_SERVICE or Notification.FLAG_GROUP_SUMMARY) != 0) return
         val titulo = n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty().trim()
         val texto = n.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty().trim()
@@ -77,11 +84,44 @@ class AvisosService : NotificationListenerService() {
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
         ultimos.remove(sbn.key)
+        if (sbn.key in llamadasSonando) terminarLlamada(sbn.key)
         if (sbn.key == claveNavegacion) {
             claveNavegacion = null
             EnlaceService.actual?.enviar(Mensaje.NavFin)
             Log.d(TAG, "navegación terminada")
         }
+    }
+
+    /**
+     * Llamada de una app elegida (Teléfono, WhatsApp…): se manda LLAMADA mientras
+     * suena y LLAMADA_FIN cuando deja de sonar (contestada, rechazada o colgada).
+     * "Sonando" = CallStyle de tipo entrante; si la app no usa CallStyle, que tenga
+     * pantalla completa (así avisan las llamadas entrantes).
+     */
+    private fun revisarLlamada(sbn: StatusBarNotification) {
+        val n = sbn.notification
+        val tipo = n.extras.getInt(Notification.EXTRA_CALL_TYPE, 0)
+        val sonando = if (tipo != 0) tipo == Notification.CallStyle.CALL_TYPE_INCOMING else n.fullScreenIntent != null
+        if (!sonando) {
+            if (sbn.key in llamadasSonando) terminarLlamada(sbn.key)
+            return
+        }
+        if (sbn.key in llamadasSonando) return
+        val persona = n.extras.getParcelable(Notification.EXTRA_CALL_PERSON, android.app.Person::class.java)
+        val nombre = persona?.name?.toString()?.trim().orEmpty()
+            .ifEmpty { n.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty().trim() }
+        val id = (++numeroLlamada).toString()
+        llamadasSonando[sbn.key] = id
+        val enviado = EnlaceService.actual?.enviar(
+            Mensaje.Llamada(id, Enlace.recortar(nombreApp(sbn.packageName), Enlace.MAX_APP), Enlace.recortar(nombre, Enlace.MAX_TITULO))
+        ) ?: false
+        Log.d(TAG, "llamada entrante de ${sbn.packageName} reenviada=$enviado")
+    }
+
+    private fun terminarLlamada(clave: String) {
+        val id = llamadasSonando.remove(clave) ?: return
+        EnlaceService.actual?.enviar(Mensaje.LlamadaFin(id))
+        Log.d(TAG, "llamada dejó de sonar")
     }
 
     /** Notificación fija de navegación paso a paso de Google Maps. */
