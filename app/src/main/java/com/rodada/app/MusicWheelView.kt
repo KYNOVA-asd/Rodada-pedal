@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.util.Log
 import android.view.MotionEvent
 import android.view.View
 import kotlin.math.min
@@ -120,6 +121,7 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
 
     override fun performClick(): Boolean {
         super.performClick()
+        Log.d(TAG, "zona=${clickZone ?: Zone.CENTER} onControl=${onControl != null}")
         onControl?.invoke(clickZone ?: Zone.CENTER)
         clickZone = null
         return true
@@ -153,4 +155,8 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
         width * 0.35f,
         height / 2f - 6f * resources.displayMetrics.density
     )
+
+    companion object {
+        private const val TAG = "RodadaRueda"
+    }
 }
