@@ -18,11 +18,8 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
     private var clickZone: Zone? = null
 
     private val wheelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(48, 48, 48) }
+    private val gapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
     private val centerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(70, 70, 70) }
-    private val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(100, 100, 100)
-        strokeWidth = 2f * resources.displayMetrics.density
-    }
     private val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(100, 100, 100) }
     private val symbolPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
@@ -40,35 +37,25 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
         if (radius <= 0f) return
 
         canvas.drawCircle(cx, cy, radius, wheelPaint)
-        for (horizontal in listOf(-1f, 1f)) {
-            for (vertical in listOf(-1f, 1f)) {
-                canvas.drawLine(
-                    cx + horizontal * radius * 0.24f,
-                    cy + vertical * radius * 0.24f,
-                    cx + horizontal * radius * 0.67f,
-                    cy + vertical * radius * 0.67f,
-                    dividerPaint
-                )
-            }
-        }
-        canvas.drawCircle(cx, cy, radius * 0.32f, centerPaint)
+        canvas.drawCircle(cx, cy, radius * 0.36f, gapPaint)
+        canvas.drawCircle(cx, cy, radius * 0.30f, centerPaint)
 
         pressedZone?.let { zone ->
             val (x, y) = zoneCenter(zone, cx, cy, radius)
             canvas.drawCircle(x, y, radius * 0.27f, pressedPaint)
         }
 
-        symbolPaint.strokeWidth = radius * 0.045f
-        val arm = radius * 0.17f
+        symbolPaint.strokeWidth = radius * 0.020f
+        val arm = radius * 0.105f
         val topY = cy - radius * 0.64f
         val bottomY = cy + radius * 0.64f
         canvas.drawLine(cx - arm, topY, cx + arm, topY, symbolPaint)
         canvas.drawLine(cx, topY - arm, cx, topY + arm, symbolPaint)
         canvas.drawLine(cx - arm, bottomY, cx + arm, bottomY, symbolPaint)
 
-        drawTrack(canvas, cx - radius * 0.64f, cy, radius * 0.23f, previous = true)
-        drawTrack(canvas, cx + radius * 0.64f, cy, radius * 0.23f, previous = false)
-        drawPlayPause(canvas, cx, cy, radius * 0.19f)
+        drawTrack(canvas, cx - radius * 0.64f, cy, radius * 0.14f, previous = true)
+        drawTrack(canvas, cx + radius * 0.64f, cy, radius * 0.14f, previous = false)
+        drawPlayPause(canvas, cx, cy, radius * 0.12f)
     }
 
     private fun drawTrack(canvas: Canvas, x: Float, y: Float, size: Float, previous: Boolean) {
@@ -162,5 +149,8 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
         Zone.CENTER -> cx to cy
     }
 
-    private fun wheelRadius(): Float = min(width, height) / 2f - 4f * resources.displayMetrics.density
+    private fun wheelRadius(): Float = min(
+        width * 0.35f,
+        height / 2f - 6f * resources.displayMetrics.density
+    )
 }
