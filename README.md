@@ -2,7 +2,7 @@
 
 App Android para usar un SENWA S40 como computadora de bici y "smartwatch
 de manubrio": velocidad por GPS, hora, control por voz y notificaciones,
-sin tocar la pantalla ni quitarse el casco.
+sin tocar la pantalla ni quitarse el casco. 
 
 ## El problema
 
