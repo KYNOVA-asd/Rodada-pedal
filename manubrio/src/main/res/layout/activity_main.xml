@@ -38,38 +38,69 @@
             android:paddingBottom="5dp" />
 
         <LinearLayout
+            android:id="@+id/speed_block"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="0.55"
             android:orientation="vertical">
 
-            <TextView
+            <com.rodada.app.LedTextView
                 android:id="@+id/speed"
                 android:layout_width="match_parent"
                 android:layout_height="0dp"
-                android:layout_weight="1"
-                android:autoSizeMaxTextSize="180sp"
-                android:autoSizeMinTextSize="40sp"
-                android:autoSizeStepGranularity="2sp"
-                android:autoSizeTextType="uniform"
-                android:fontFamily="sans"
-                android:gravity="center"
-                android:includeFontPadding="false"
-                android:maxLines="1"
-                android:textColor="#FFFFFF"
-                android:textStyle="bold" />
+                android:layout_weight="1" />
 
-            <TextView
+            <com.rodada.app.LedTextView
                 android:id="@+id/speed_unit"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:gravity="center"
-                android:text="@string/speed_unit"
-                android:textColor="#FFFFFF"
-                android:textSize="20sp" />
+                android:layout_height="22dp"
+                android:layout_marginTop="4dp"
+                android:text="@string/speed_unit" />
+        </LinearLayout>
+
+        <!-- Navegación de Google Maps del Motorola: reemplaza velocidad y distancia. -->
+        <LinearLayout
+            android:id="@+id/nav_block"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="0.80"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <com.rodada.app.NavArrowView
+                    android:id="@+id/nav_arrow"
+                    android:layout_width="0dp"
+                    android:layout_height="match_parent"
+                    android:layout_weight="0.45" />
+
+                <com.rodada.app.LedTextView
+                    android:id="@+id/nav_distance"
+                    android:layout_width="0dp"
+                    android:layout_height="64dp"
+                    android:layout_weight="0.55" />
+            </LinearLayout>
+
+            <com.rodada.app.LedTextView
+                android:id="@+id/nav_instruction"
+                android:layout_width="match_parent"
+                android:layout_height="40dp" />
+
+            <com.rodada.app.LedTextView
+                android:id="@+id/nav_summary"
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                android:layout_marginTop="6dp" />
         </LinearLayout>
 
         <LinearLayout
+            android:id="@+id/stats_row"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="0.25"
@@ -82,23 +113,17 @@
                 android:layout_weight="1"
                 android:orientation="vertical">
 
-                <TextView
+                <com.rodada.app.LedTextView
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:text="@string/distance_label"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp" />
+                    android:layout_height="14dp"
+                    android:text="@string/distance_label" />
 
-                <TextView
+                <com.rodada.app.LedTextView
                     android:id="@+id/distance"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:gravity="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="24sp"
-                    android:textStyle="bold" />
+                    android:layout_height="26dp"
+                    android:layout_marginTop="4dp"
+                    android:paddingEnd="10dp" />
             </LinearLayout>
 
             <LinearLayout
@@ -107,36 +132,28 @@
                 android:layout_weight="1"
                 android:orientation="vertical">
 
-                <TextView
+                <com.rodada.app.LedTextView
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center"
-                    android:text="@string/elapsed_label"
-                    android:textColor="#FFFFFF"
-                    android:textSize="13sp" />
+                    android:layout_height="14dp"
+                    android:text="@string/elapsed_label" />
 
-                <TextView
+                <com.rodada.app.LedTextView
                     android:id="@+id/elapsed"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="monospace"
-                    android:gravity="center"
-                    android:textColor="#FFFFFF"
-                    android:textSize="24sp"
-                    android:textStyle="bold" />
+                    android:layout_height="26dp"
+                    android:layout_marginTop="4dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="2dp" />
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
-        <TextView
+        <com.rodada.app.LedTextView
             android:id="@+id/unread_badge"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
+            android:layout_width="56dp"
+            android:layout_height="18dp"
             android:layout_gravity="top|end"
             android:layout_margin="10dp"
-            android:textColor="#FFC107"
-            android:textSize="20sp"
-            android:textStyle="bold"
             android:visibility="gone" />
 
         <!-- Notificación del Motorola: tapa la pantallita; un toque la lee. -->
@@ -150,35 +167,22 @@
             android:padding="14dp"
             android:visibility="gone">
 
-            <TextView
+            <com.rodada.app.LedTextView
                 android:id="@+id/notice_app"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:maxLines="1"
-                android:textColor="#FFC107"
-                android:textSize="20sp"
-                android:textStyle="bold" />
+                android:layout_height="22dp" />
 
-            <TextView
+            <com.rodada.app.LedTextView
                 android:id="@+id/notice_title"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:ellipsize="end"
-                android:maxLines="2"
-                android:textColor="#FFFFFF"
-                android:textSize="32sp"
-                android:textStyle="bold" />
+                android:layout_height="44dp"
+                android:layout_marginTop="10dp" />
 
-            <TextView
+            <com.rodada.app.LedTextView
                 android:id="@+id/notice_text"
                 android:layout_width="match_parent"
-                android:layout_height="0dp"
-                android:layout_marginTop="8dp"
-                android:layout_weight="1"
-                android:ellipsize="end"
-                android:textColor="#FFFFFF"
-                android:textSize="26sp" />
+                android:layout_height="44dp"
+                android:layout_marginTop="10dp" />
         </LinearLayout>
     </FrameLayout>
 

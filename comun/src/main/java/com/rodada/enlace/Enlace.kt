@@ -33,13 +33,20 @@ import java.util.UUID
  *                              Motorola → S40: lo que suena. estado es
  *                              REPRODUCIENDO, PAUSA o NADA. Se manda solo cuando
  *                              cambia y una vez al conectar (versión 2).
+ * - NAV\tdistancia\tinstruccion\tresumen
+ *                              Motorola → S40: indicación de navegación de Google
+ *                              Maps: distancia al giro ("200 m", puede ir vacía),
+ *                              instrucción ("Gira a la derecha…") y resumen
+ *                              ("3 min · 800 m · Llegada: 5:35 p. m."). Se manda
+ *                              cuando cambia y al conectar (versión 3).
+ * - NAV_FIN                    Motorola → S40: terminó la navegación (versión 3).
  *
- * Privacidad: el contenido de NOTIF y DECIR no se guarda en disco ni en logs.
+ * Privacidad: el contenido de NOTIF, DECIR y NAV no se guarda en disco ni en logs.
  */
 object Enlace {
     val UUID: UUID = java.util.UUID.fromString("6f1c2a4e-8d3b-4c55-9a1e-52d0a7c3e901")
     const val NOMBRE_SERVICIO = "Rodada Enlace"
-    const val VERSION = 2
+    const val VERSION = 3
     const val MAX_LINEA = 2048
     const val MAX_APP = 40
     const val MAX_TITULO = 80
@@ -56,6 +63,8 @@ sealed class Mensaje {
     data class Cancion(val estado: Estado, val artista: String, val titulo: String) : Mensaje() {
         enum class Estado { REPRODUCIENDO, PAUSA, NADA }
     }
+    data class Nav(val distancia: String, val instruccion: String, val resumen: String) : Mensaje()
+    object NavFin : Mensaje()
 
     /** Línea lista para enviar, con el '\n' final. */
     fun codificar(): String {
@@ -64,6 +73,8 @@ sealed class Mensaje {
             is Decir -> listOf("DECIR", texto)
             is Notif -> listOf("NOTIF", app, titulo, texto)
             is Cancion -> listOf("CANCION", estado.name, artista, titulo)
+            is Nav -> listOf("NAV", distancia, instruccion, resumen)
+            NavFin -> listOf("NAV_FIN")
         }
         return campos.joinToString("\t") { escapar(it) } + "\n"
     }
@@ -87,6 +98,8 @@ sealed class Mensaje {
                     val estado = Cancion.Estado.entries.firstOrNull { it.name == campos.getOrNull(1) }
                     if (campos.size >= 4 && estado != null) Cancion(estado, campos[2], campos[3]) else null
                 }
+                "NAV" -> if (campos.size >= 3) Nav(campos[1], campos[2], campos.getOrElse(3) { "" }) else null
+                "NAV_FIN" -> NavFin
                 else -> null
             }
         }

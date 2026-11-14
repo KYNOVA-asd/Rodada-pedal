@@ -29,10 +29,10 @@ import com.rodada.enlace.SesionMusica
 
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
-    private lateinit var speed: TextView
-    private lateinit var speedUnit: TextView
-    private lateinit var distance: TextView
-    private lateinit var elapsed: TextView
+    private lateinit var speed: LedTextView
+    private lateinit var speedUnit: LedTextView
+    private lateinit var distance: LedTextView
+    private lateinit var elapsed: LedTextView
     private lateinit var audioManager: AudioManager
     private lateinit var vibrator: Vibrator
     private lateinit var speech: SpeechController
@@ -49,13 +49,20 @@ class MainActivity : Activity() {
     private var noticeIndex = 0
     /** Cuántas de las más nuevas no se han escuchado todavía. */
     private var unread = 0
-    private lateinit var unreadBadge: TextView
+    private lateinit var unreadBadge: LedTextView
     private lateinit var ticker: LedTickerView
     /** Lo último que mandó el Motorola por el enlace. */
     private var linkSong: Mensaje.Cancion? = null
+    /** Última instrucción de navegación, para vibrar solo cuando cambia la maniobra. */
+    private var lastManeuver: String? = null
+    private val dimScreen = Runnable { setBrightness(DIM_BRIGHTNESS) }
     /** Lo que suena en este S40 (solo con destino "este teléfono" y acceso concedido). */
     private var localMusic: SesionMusica? = null
-    private val hideNotice = Runnable { notice.visibility = android.view.View.GONE }
+    /** Páginas de la pantallita: MAPA ⟵ CENTRO ⟶ NOTIFICACIONES. */
+    private enum class Page { MAP, CENTER, NOTICES }
+    private var page = Page.CENTER
+    /** Vuelta automática al centro tras un salto automático o un aviso. */
+    private val hideNotice = Runnable { showPage(Page.CENTER) }
 
     private val updateScreen = object : Runnable {
         override fun run() {
@@ -81,7 +88,8 @@ class MainActivity : Activity() {
             override fun onDown(e: MotionEvent) = true
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
                 when {
-                    notice.visibility == android.view.View.VISIBLE -> readShownNotice()
+                    page == Page.MAP -> openMap()
+                    page == Page.NOTICES -> readShownNotice()
                     unread > 0 -> {
                         // Mensajes sin escuchar tienen prioridad sobre la hora.
                         noticeIndex = unread - 1
@@ -101,6 +109,7 @@ class MainActivity : Activity() {
                 val start = e1 ?: return false
                 val dx = e2.x - start.x
                 val dy = e2.y - start.y
+                android.util.Log.d("RodadaGesto", "deslizar dx=${dx.toInt()} dy=${dy.toInt()} en $page")
                 val minPx = SWIPE_MIN_PX * resources.displayMetrics.density
                 if (-dy > minPx && -dy > kotlin.math.abs(dx)) {
                     // Deslizar hacia arriba: quitar el aviso y marcar todo como leído.
@@ -110,7 +119,15 @@ class MainActivity : Activity() {
                 if (kotlin.math.abs(dx) < minPx ||
                     kotlin.math.abs(dx) < kotlin.math.abs(dy)
                 ) return false
-                browseNotices(older = dx < 0)
+                // Dedo de izquierda a derecha (dx > 0): mapa. De derecha a izquierda (dx < 0):
+                // notificaciones; seguir en ese sentido pasa a una más vieja. En sentido
+                // contrario se vuelve al centro.
+                when {
+                    dx > 0 && page == Page.CENTER -> showPage(Page.MAP)
+                    dx > 0 && page == Page.NOTICES -> showPage(Page.CENTER)
+                    dx < 0 && page == Page.MAP -> showPage(Page.CENTER)
+                    dx < 0 -> browseNotices()
+                }
                 return true
             }
         })
@@ -145,12 +162,14 @@ class MainActivity : Activity() {
         // Al volver de Ajustes con el acceso recién concedido.
         if (!isMotorolaTarget() && localMusic == null) startLocalMusic()
         ticker.reanudar()
+        wakeScreen()
     }
 
     override fun onPause() {
         handler.removeCallbacks(updateScreen)
         // Pantalla apagada o app en segundo plano: la franja deja de animar.
         ticker.pausar()
+        handler.removeCallbacks(dimScreen)
         super.onPause()
     }
 
@@ -183,6 +202,7 @@ class MainActivity : Activity() {
             speedUnit.setText(R.string.speed_unit)
         }
         distance.text = getString(R.string.distance_value, RideState.distanceMeters / 1000f)
+        updateNavSummary()
         val seconds = RideState.elapsedSeconds()
         elapsed.text = getString(R.string.elapsed_value, seconds / 3600, (seconds / 60) % 60, seconds % 60)
         if (RideState.running) {
@@ -270,34 +290,60 @@ class MainActivity : Activity() {
 
     private fun isVoiceOnMotorola(): Boolean = prefs.getString(KEY_VOICE, TARGET_PHONE) == TARGET_MOTOROLA
 
-    /** Deslizar en la pantallita: muestra la última; más deslizamientos recorren las anteriores. */
-    private fun browseNotices(older: Boolean) {
+    /** Deslizar a la derecha: la última; cada deslizamiento más, una anterior (y vuelve a empezar). */
+    private fun browseNotices() {
         if (notices.isEmpty()) {
-            Toast.makeText(this, R.string.no_notifications, Toast.LENGTH_SHORT).show()
+            findViewById<LedTextView>(R.id.notice_app).text = ""
+            findViewById<LedTextView>(R.id.notice_title).setText(R.string.no_notifications)
+            findViewById<LedTextView>(R.id.notice_text).text = ""
+            showPage(Page.NOTICES)
             return
         }
-        noticeIndex = when {
-            notice.visibility != android.view.View.VISIBLE -> 0
-            older -> (noticeIndex + 1).coerceAtMost(notices.size - 1)
-            else -> (noticeIndex - 1).coerceAtLeast(0)
-        }
-        displayNotice(noticeIndex)
+        noticeIndex = if (page != Page.NOTICES) 0 else (noticeIndex + 1) % notices.size
+        displayNotice(noticeIndex, auto = false)
     }
 
-    private fun displayNotice(index: Int) {
+    /**
+     * Toque en la página del mapa: abre Google Maps del S40. Mientras está abierto usa
+     * el GPS y la pantalla del S40; se regresa a Rodada con el botón de atrás.
+     */
+    private fun openMap() {
+        val intent = packageManager.getLaunchIntentForPackage(MAPS_PACKAGE)
+        if (intent == null) {
+            Toast.makeText(this, R.string.maps_missing, Toast.LENGTH_SHORT).show()
+            return
+        }
+        startActivity(intent)
+    }
+
+    /** auto = llegó sola: vuelve al centro a los [NOTICE_MS]. Abierta a mano se queda. */
+    private fun displayNotice(index: Int, auto: Boolean = true) {
         val notif = notices[index]
-        findViewById<TextView>(R.id.notice_app).text =
+        findViewById<LedTextView>(R.id.notice_app).text =
             if (notices.size > 1) getString(R.string.notice_position, notif.app, index + 1, notices.size) else notif.app
-        findViewById<TextView>(R.id.notice_title).text = notif.titulo
-        findViewById<TextView>(R.id.notice_text).text = notif.texto
-        notice.visibility = android.view.View.VISIBLE
+        findViewById<LedTextView>(R.id.notice_title).text = notif.titulo
+        findViewById<LedTextView>(R.id.notice_text).text = notif.texto
+        showPage(Page.NOTICES)
+        if (auto) handler.postDelayed(hideNotice, NOTICE_MS)
+    }
+
+    /** Cambia de página; cancela la vuelta automática pendiente. */
+    private fun showPage(target: Page) {
+        android.util.Log.d("RodadaGesto", "página $page -> $target")
         handler.removeCallbacks(hideNotice)
-        handler.postDelayed(hideNotice, NOTICE_MS)
+        page = target
+        val visible = android.view.View.VISIBLE
+        val gone = android.view.View.GONE
+        notice.visibility = if (target == Page.NOTICES) visible else gone
+        findViewById<android.view.View>(R.id.nav_block).visibility = if (target == Page.MAP) visible else gone
+        findViewById<android.view.View>(R.id.speed_block).visibility = if (target == Page.CENTER) visible else gone
+        findViewById<android.view.View>(R.id.stats_row).visibility = if (target == Page.CENTER) visible else gone
+        if (target == Page.MAP) updateNavViews()
     }
 
     /** Un toque sobre el aviso: dice el texto del mensaje que se está viendo. */
     private fun dismissNotices() {
-        if (unread == 0 && notice.visibility != android.view.View.VISIBLE) return
+        if (unread == 0 && page != Page.NOTICES) return
         unread = 0
         showUnread()
         handler.removeCallbacks(hideNotice)
@@ -371,7 +417,10 @@ class MainActivity : Activity() {
             return
         }
         val link = EnlaceCliente(this, address, { estado ->
-            if (estado != EnlaceCliente.Estado.CONECTADO) linkSong = null
+            if (estado != EnlaceCliente.Estado.CONECTADO) {
+                linkSong = null
+                hideNav()
+            }
             showLinkStatus()
             updateTicker()
         }) { mensaje ->
@@ -381,6 +430,8 @@ class MainActivity : Activity() {
                     linkSong = mensaje
                     updateTicker()
                 }
+                is Mensaje.Nav -> showNav(mensaje)
+                Mensaje.NavFin -> hideNav()
                 is Mensaje.Hola, is Mensaje.Decir -> Unit
             }
         }
@@ -397,6 +448,7 @@ class MainActivity : Activity() {
         showUnread()
         noticeIndex = 0
         displayNotice(0)
+        wakeScreen()
         ticker.mostrarUnaVez(getString(R.string.ticker_notice, notif.app, notif.titulo))
         say(getString(R.string.speech_new_message, notif.titulo.ifBlank { notif.app }))
         if (vibrator.hasVibrator()) {
@@ -456,6 +508,104 @@ class MainActivity : Activity() {
         targetStatus.setTextColor(COLOR_NORMAL)
         startLocalMusic()
         updateTicker()
+    }
+
+    /** Última navegación recibida, para mostrar la velocidad en su línea de abajo. */
+    private var currentNav: Mensaje.Nav? = null
+
+    /** Pantalla de navegación: flecha grande, distancia, instrucción y resumen. */
+    private fun showNav(nav: Mensaje.Nav) {
+        currentNav = nav
+        val maneuverChanged = nav.instruccion != lastManeuver
+        lastManeuver = nav.instruccion
+        updateNavViews()
+        if (maneuverChanged) {
+            // Maniobra nueva: salta al mapa un rato (salvo si estás leyendo una notificación).
+            if (page != Page.NOTICES) {
+                showPage(Page.MAP)
+                handler.postDelayed(hideNotice, NOTICE_MS)
+            }
+            wakeScreen()
+            if (vibrator.hasVibrator()) {
+                vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 200, 120, 200), -1))
+            }
+        }
+    }
+
+    private fun hideNav() {
+        if (currentNav == null) return
+        currentNav = null
+        lastManeuver = null
+        updateNavViews()
+    }
+
+    /** Página del mapa: la ruta del Motorola, o "Sin ruta" si Maps no está navegando. */
+    private fun updateNavViews() {
+        val nav = currentNav
+        val arrow = findViewById<NavArrowView>(R.id.nav_arrow)
+        if (nav == null) {
+            arrow.visibility = android.view.View.INVISIBLE
+            findViewById<LedTextView>(R.id.nav_distance).setText(R.string.nav_no_route)
+            findViewById<LedTextView>(R.id.nav_instruction).setText(R.string.nav_tap_to_open)
+            findViewById<LedTextView>(R.id.nav_summary).text = ""
+            return
+        }
+        arrow.visibility = android.view.View.VISIBLE
+        arrow.turn = turnFor(nav.instruccion)
+        findViewById<LedTextView>(R.id.nav_distance).text = nav.distancia.ifBlank { shortDistance(nav.resumen) }
+        findViewById<LedTextView>(R.id.nav_instruction).text = nav.instruccion
+        updateNavSummary()
+    }
+
+    /** "23 km/h · 3 min · 800 m · Llegada: 5:35 p. m." (la velocidad viene del GPS del S40). */
+    private fun updateNavSummary() {
+        val nav = currentNav ?: return
+        val speedText = getString(R.string.nav_speed, RideState.speedKmh.toInt())
+        findViewById<LedTextView>(R.id.nav_summary).text =
+            if (nav.resumen.isBlank()) speedText else "$speedText · ${nav.resumen}"
+    }
+
+    private fun turnFor(instruction: String): NavArrowView.Turn {
+        val text = instruction.lowercase()
+        return when {
+            "destino" in text || "llegaste" in text || "has llegado" in text -> NavArrowView.Turn.ARRIVE
+            "vuelta en u" in text || "retorno" in text || "cambio de sentido" in text -> NavArrowView.Turn.UTURN
+            ("ligeramente" in text || "mantente" in text || "incorpórate" in text) && "izquierda" in text ->
+                NavArrowView.Turn.SLIGHT_LEFT
+            ("ligeramente" in text || "mantente" in text || "incorpórate" in text) && "derecha" in text ->
+                NavArrowView.Turn.SLIGHT_RIGHT
+            "izquierda" in text -> NavArrowView.Turn.LEFT
+            "derecha" in text -> NavArrowView.Turn.RIGHT
+            else -> NavArrowView.Turn.STRAIGHT
+        }
+    }
+
+    /** De "3 min · 800 m · Llegada: 5:35 p. m." deja "800 m". */
+    private fun shortDistance(raw: String): String {
+        val parts = raw.split('·').map { it.trim() }
+        return parts.firstOrNull { Regex("""^\d+([.,]\d+)?\s?(m|km)$""").matches(it) } ?: ""
+    }
+
+    /** Brillo al máximo un rato; luego vuelve a tenue. Toque, notificación o maniobra. */
+    private fun wakeScreen() {
+        setBrightness(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL)
+        handler.removeCallbacks(dimScreen)
+        handler.postDelayed(dimScreen, BRIGHT_MS)
+    }
+
+    private fun setBrightness(value: Float) {
+        val attributes = window.attributes
+        if (attributes.screenBrightness == value) return
+        attributes.screenBrightness = value
+        window.attributes = attributes
+    }
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            android.util.Log.d("RodadaGesto", "toque, brillo=${window.attributes.screenBrightness}")
+            wakeScreen()
+        }
+        return super.dispatchTouchEvent(event)
     }
 
     /** Franja con destino "este teléfono": lee la música del S40 si hay acceso. */
@@ -670,12 +820,16 @@ class MainActivity : Activity() {
         private const val MENU_VOICE_MOTOROLA = 4
         private const val KEY_VOICE = "voz_en"
         private const val NOTICE_MS = 20_000L
+        private const val MAPS_PACKAGE = "com.google.android.apps.maps"
+        private const val BRIGHT_MS = 10_000L
+        private const val DIM_BRIGHTNESS = 0.06f
         private const val MAX_NOTICES = 5
         private const val SWIPE_MIN_PX = 60
         private const val COLOR_OFF = 0xFF9E9E9E.toInt()
         private const val COLOR_NORMAL = 0xFFFFFFFF.toInt()
         private const val COLOR_OK = 0xFF4CAF50.toInt()
         private const val COLOR_WARNING = 0xFFFFC107.toInt()
+        private const val COLOR_LED_BLUE = 0xFF2EA8FF.toInt()
         private const val COLOR_ERROR = 0xFFFF5252.toInt()
         private val BLUETOOTH_PERMISSIONS = arrayOf(
             Manifest.permission.BLUETOOTH_CONNECT,

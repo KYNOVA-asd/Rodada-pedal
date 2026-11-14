@@ -102,6 +102,7 @@ class EnlaceService : Service() {
         // Si el acceso a notificaciones llegó después, se reintenta al conectar.
         musica.iniciar()
         nuevo.enviar(musica.actual)
+        AvisosService.actual?.reenviarNavegacionActual()
         Log.d(TAG, "conectado con ${socket.remoteDevice.address}")
         ponerEstado(EnlaceEstado.Estado.Conectado(nombre))
     }
@@ -119,7 +120,7 @@ class EnlaceService : Service() {
         Log.d(TAG, "recibido $mensaje")
         when (mensaje) {
             is Mensaje.Decir -> voz.decir(mensaje.texto)
-            is Mensaje.Hola, is Mensaje.Notif, is Mensaje.Cancion -> Unit
+            is Mensaje.Hola, is Mensaje.Notif, is Mensaje.Cancion, is Mensaje.Nav, Mensaje.NavFin -> Unit
         }
     }
 

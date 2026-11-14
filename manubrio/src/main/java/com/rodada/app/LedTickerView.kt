@@ -11,7 +11,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 /**
- * Franja tipo display de estéreo de coche: matriz de puntos LED ámbar de 7 filas,
+ * Franja tipo display de estéreo de coche: matriz de puntos LED azul de 7 filas,
  * dibujada punto por punto con una fuente 5×7 propia (sin fuentes externas).
  *
  * Ciclo, como un autoestéreo:
@@ -28,8 +28,9 @@ import java.time.format.DateTimeFormatter
 class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
     private enum class Fase { RELOJ, TEXTO, UNA_VEZ }
 
-    private val encendido = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(255, 176, 0) }
-    private val apagado = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(42, 28, 0) }
+    // LED azul: punto encendido brillante y apagado azul muy oscuro.
+    private val encendido = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(46, 168, 255) }
+    private val apagado = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(8, 24, 44) }
     private val formatoHora = DateTimeFormatter.ofPattern("HH:mm")
 
     private var base = IntArray(0)
@@ -181,7 +182,7 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
         private fun normalizar(texto: String): String {
             val conMarca = texto.uppercase()
                 .replace('–', '-').replace('—', '-').replace('_', ' ').replace('×', 'X')
-                .replace('|', '/').replace('[', '(').replace(']', ')')
+                .replace('|', '/').replace('[', '(').replace(']', ')').replace('·', '-')
                 .replace('Ñ', '\u0001')
             val sinAcentos = Normalizer.normalize(conMarca, Normalizer.Form.NFD)
                 .replace(Regex("\\p{Mn}+"), "")
@@ -245,7 +246,12 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
             '+' to intArrayOf(0x00, 0x04, 0x04, 0x1F, 0x04, 0x04, 0x00),
             '#' to intArrayOf(0x0A, 0x0A, 0x1F, 0x0A, 0x1F, 0x0A, 0x0A),
             '¿' to intArrayOf(0x04, 0x00, 0x04, 0x08, 0x10, 0x11, 0x0E),
-            '¡' to intArrayOf(0x04, 0x00, 0x00, 0x04, 0x04, 0x04, 0x04)
+            '¡' to intArrayOf(0x04, 0x00, 0x00, 0x04, 0x04, 0x04, 0x04),
+            '→' to intArrayOf(0x00, 0x04, 0x02, 0x1F, 0x02, 0x04, 0x00),
+            '←' to intArrayOf(0x00, 0x04, 0x08, 0x1F, 0x08, 0x04, 0x00),
+            '↑' to intArrayOf(0x04, 0x0E, 0x15, 0x04, 0x04, 0x04, 0x04),
+            '↓' to intArrayOf(0x04, 0x04, 0x04, 0x04, 0x15, 0x0E, 0x04),
+            '✉' to intArrayOf(0x00, 0x1F, 0x1B, 0x15, 0x11, 0x1F, 0x00)
         )
     }
 }

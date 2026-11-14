@@ -66,6 +66,10 @@
     <string name="ticker_notice">%1$s: %2$s</string>
     <string name="music_access_title">Ver lo que suena</string>
     <string name="music_access_explanation">Para mostrar la canción de este teléfono, Android pide activar el acceso a notificaciones de Rodada. Rodada solo lee la música; no lee ni guarda tus notificaciones.</string>
+    <string name="nav_speed">%1$d km/h</string>
+    <string name="maps_missing">Google Maps no está instalado en este teléfono</string>
+    <string name="nav_no_route">Sin ruta</string>
+    <string name="nav_tap_to_open">Toca para abrir Maps</string>
     <string name="speech_no_notification">No tienes notificaciones.</string>
     <string name="voice_this_phone">Voz en: este teléfono</string>
     <string name="voice_motorola">Voz en: Motorola</string>
