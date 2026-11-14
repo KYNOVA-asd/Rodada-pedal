@@ -26,16 +26,20 @@ import java.util.UUID
  * Mensajes
  * - HOLA\tversion\tnombre      Ambos lados, al conectar. version = [VERSION].
  * - DECIR\ttexto               S40 → Motorola: decir el texto con el TTS del
- *                              Motorola, bajando la música un momento.
+ *                              Motorola, pausando la música mientras habla.
  * - NOTIF\tapp\ttitulo\ttexto  Motorola → S40: notificación de una app elegida,
  *                              ya recortada a [MAX_APP], [MAX_TITULO] y [MAX_TEXTO].
+ * - CANCION\testado\tartista\ttitulo
+ *                              Motorola → S40: lo que suena. estado es
+ *                              REPRODUCIENDO, PAUSA o NADA. Se manda solo cuando
+ *                              cambia y una vez al conectar (versión 2).
  *
  * Privacidad: el contenido de NOTIF y DECIR no se guarda en disco ni en logs.
  */
 object Enlace {
     val UUID: UUID = java.util.UUID.fromString("6f1c2a4e-8d3b-4c55-9a1e-52d0a7c3e901")
     const val NOMBRE_SERVICIO = "Rodada Enlace"
-    const val VERSION = 1
+    const val VERSION = 2
     const val MAX_LINEA = 2048
     const val MAX_APP = 40
     const val MAX_TITULO = 80
@@ -49,6 +53,9 @@ sealed class Mensaje {
     data class Hola(val version: Int, val nombre: String) : Mensaje()
     data class Decir(val texto: String) : Mensaje()
     data class Notif(val app: String, val titulo: String, val texto: String) : Mensaje()
+    data class Cancion(val estado: Estado, val artista: String, val titulo: String) : Mensaje() {
+        enum class Estado { REPRODUCIENDO, PAUSA, NADA }
+    }
 
     /** Línea lista para enviar, con el '\n' final. */
     fun codificar(): String {
@@ -56,12 +63,16 @@ sealed class Mensaje {
             is Hola -> listOf("HOLA", version.toString(), nombre)
             is Decir -> listOf("DECIR", texto)
             is Notif -> listOf("NOTIF", app, titulo, texto)
+            is Cancion -> listOf("CANCION", estado.name, artista, titulo)
         }
         return campos.joinToString("\t") { escapar(it) } + "\n"
     }
 
-    /** No incluye el contenido, para poder registrarlo sin datos privados. */
-    override fun toString(): String = javaClass.simpleName
+    /**
+     * Solo el tipo, nunca el contenido, para poder registrarlo sin datos privados.
+     * Es final para que las data class no generen su propio toString.
+     */
+    final override fun toString(): String = javaClass.simpleName
 
     companion object {
         /** null si la línea es inválida o de un tipo desconocido. */
@@ -72,6 +83,10 @@ sealed class Mensaje {
                 "HOLA" -> if (campos.size >= 3) Hola(campos[1].toIntOrNull() ?: 0, campos[2]) else null
                 "DECIR" -> if (campos.size >= 2) Decir(campos[1]) else null
                 "NOTIF" -> if (campos.size >= 4) Notif(campos[1], campos[2], campos[3]) else null
+                "CANCION" -> {
+                    val estado = Cancion.Estado.entries.firstOrNull { it.name == campos.getOrNull(1) }
+                    if (campos.size >= 4 && estado != null) Cancion(estado, campos[2], campos[3]) else null
+                }
                 else -> null
             }
         }

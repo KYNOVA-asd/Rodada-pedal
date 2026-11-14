@@ -5,35 +5,37 @@
     android:background="#000000"
     android:orientation="vertical">
 
-    <LinearLayout
-        android:id="@+id/info_panel"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_marginStart="12dp"
         android:layout_marginTop="12dp"
         android:layout_marginEnd="12dp"
         android:layout_marginBottom="6dp"
-        android:layout_weight="0.55"
+        android:layout_weight="0.55">
+
+    <LinearLayout
+        android:id="@+id/info_panel"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:background="@drawable/info_panel_background"
         android:contentDescription="@string/ride_long_press_hint"
         android:orientation="vertical"
         android:padding="14dp">
 
-        <TextView
-            android:id="@+id/clock"
+        <!-- Franja tipo estéreo de coche: hora y lo que suena, en puntos LED. -->
+        <com.rodada.app.LedTickerView
+            android:id="@+id/ticker"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="0.20"
-            android:autoSizeMaxTextSize="56sp"
-            android:autoSizeMinTextSize="28sp"
-            android:autoSizeStepGranularity="2sp"
-            android:autoSizeTextType="uniform"
-            android:fontFamily="monospace"
-            android:gravity="center"
-            android:includeFontPadding="false"
-            android:maxLines="1"
-            android:textColor="#FFFFFF"
-            android:textStyle="bold" />
+            android:layout_marginBottom="4dp"
+            android:layout_weight="0.22"
+            android:background="@drawable/ticker_background"
+            android:contentDescription="@string/ticker_description"
+            android:paddingStart="8dp"
+            android:paddingTop="5dp"
+            android:paddingEnd="8dp"
+            android:paddingBottom="5dp" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -125,6 +127,60 @@
             </LinearLayout>
         </LinearLayout>
     </LinearLayout>
+
+        <TextView
+            android:id="@+id/unread_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_margin="10dp"
+            android:textColor="#FFC107"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:visibility="gone" />
+
+        <!-- Notificación del Motorola: tapa la pantallita; un toque la lee. -->
+        <LinearLayout
+            android:id="@+id/notice"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="@drawable/notice_background"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="14dp"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/notice_app"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:textColor="#FFC107"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/notice_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="#FFFFFF"
+                android:textSize="32sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/notice_text"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="8dp"
+                android:layout_weight="1"
+                android:ellipsize="end"
+                android:textColor="#FFFFFF"
+                android:textSize="26sp" />
+        </LinearLayout>
+    </FrameLayout>
 
     <FrameLayout
         android:layout_width="match_parent"

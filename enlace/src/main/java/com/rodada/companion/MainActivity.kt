@@ -3,6 +3,9 @@ package com.rodada.companion
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.NotificationManager
+import android.content.ComponentName
+import android.provider.Settings
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -13,6 +16,7 @@ import android.widget.Toast
 class MainActivity : Activity() {
     private lateinit var estado: TextView
     private lateinit var boton: Button
+    private lateinit var accesoAvisos: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -21,6 +25,7 @@ class MainActivity : Activity() {
         boton = findViewById(R.id.toggle)
         boton.setOnClickListener {
             if (servicioActivo()) {
+                Ajustes(this).enlaceActivo = false
                 stopService(Intent(this, EnlaceService::class.java))
                 EnlaceEstado.estado = EnlaceEstado.Estado.Apagado
             } else if (tienePermisos()) {
@@ -29,12 +34,32 @@ class MainActivity : Activity() {
                 explicarPermisos()
             }
         }
+        accesoAvisos = findViewById(R.id.listener_state)
+        findViewById<Button>(R.id.listener_access).setOnClickListener {
+            startActivity(
+                Intent(Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS)
+                    .putExtra(
+                        Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                        ComponentName(this, AvisosService::class.java).flattenToString()
+                    )
+            )
+        }
+        findViewById<Button>(R.id.choose_apps).setOnClickListener {
+            startActivity(Intent(this, AppsActivity::class.java))
+        }
+        if (Ajustes(this).enlaceActivo && tienePermisos() && !servicioActivo()) activar()
     }
 
     override fun onResume() {
         super.onResume()
         EnlaceEstado.oyente = ::mostrar
         mostrar(EnlaceEstado.estado)
+        val permitido = getSystemService(NotificationManager::class.java)
+            .isNotificationListenerAccessGranted(ComponentName(this, AvisosService::class.java))
+        val elegidas = Ajustes(this).apps.size
+        accesoAvisos.text = getString(
+            if (permitido) R.string.listener_on else R.string.listener_off
+        ) + "\n" + resources.getQuantityString(R.plurals.apps_chosen, elegidas, elegidas)
     }
 
     override fun onPause() {
@@ -78,6 +103,7 @@ class MainActivity : Activity() {
     }
 
     private fun activar() {
+        Ajustes(this).enlaceActivo = true
         startForegroundService(Intent(this, EnlaceService::class.java))
     }
 

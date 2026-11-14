@@ -12,8 +12,9 @@ import android.util.Log
 import java.util.Locale
 
 /**
- * TextToSpeech del sistema en español. Pide foco de audio temporal con
- * "duck" para que la música baje mientras habla y lo suelta al terminar.
+ * TextToSpeech del sistema en español. Pide foco de audio temporal sin "duck":
+ * la música se pausa mientras habla (bajarla no bastaba para oír la voz con
+ * audífonos) y se reanuda al soltar el foco.
  */
 class Voz(context: Context) {
     private val principal = Handler(Looper.getMainLooper())
@@ -22,7 +23,7 @@ class Voz(context: Context) {
         .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build()
-    private val foco = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+    private val foco = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
         .setAudioAttributes(atributos)
         .setOnAudioFocusChangeListener { }
         .build()

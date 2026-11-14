@@ -98,6 +98,15 @@ class SpeechController(private val activity: Activity) {
         }
     }
 
+    /** Dice un texto cualquiera con la voz del S40. */
+    fun speakText(message: String) {
+        if (!ready) {
+            showMissingVoice()
+            return
+        }
+        speak(message)
+    }
+
     private fun speak(message: String) {
         if (closed) return
         if (!hasFocus && audioManager.requestAudioFocus(focusRequest) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {

@@ -16,5 +16,17 @@
     <string name="permissions_continue">Continuar</string>
     <string name="permissions_cancel">Cancelar</string>
     <string name="permissions_needed">Sin el permiso de dispositivos cercanos no funciona el enlace.</string>
+    <string name="listener_on">Acceso a notificaciones: sí</string>
+    <string name="listener_off">Acceso a notificaciones: no</string>
+    <string name="listener_access">Acceso a notificaciones</string>
+    <string name="choose_apps">Elegir apps</string>
+    <plurals name="apps_chosen">
+        <item quantity="one">%1$d app se reenvía al S40</item>
+        <item quantity="other">%1$d apps se reenvían al S40</item>
+    </plurals>
+    <string name="apps_title">Apps que se reenvían</string>
+    <string name="apps_hint">Solo las apps marcadas mandan sus notificaciones al S40. Nada sale a internet.</string>
+    <string name="read_title">Leer en voz alta el título</string>
+    <string name="voice_notification">%1$s: %2$s</string>
     <string name="tts_missing">Descarga una voz en español en los ajustes del teléfono.</string>
 </resources>

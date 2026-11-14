@@ -14,7 +14,9 @@ import android.os.Looper
 import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.view.GestureDetector
 import android.view.KeyEvent
+import android.view.MotionEvent
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
@@ -23,13 +25,10 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import com.rodada.enlace.Mensaje
-import java.time.LocalTime
-import java.time.format.DateTimeFormatter
+import com.rodada.enlace.SesionMusica
 
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
-    private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
-    private lateinit var clock: TextView
     private lateinit var speed: TextView
     private lateinit var speedUnit: TextView
     private lateinit var distance: TextView
@@ -44,6 +43,19 @@ class MainActivity : Activity() {
     private lateinit var linkStatus: TextView
     private var enlace: EnlaceCliente? = null
     private var afterBluetoothPermission: (() -> Unit)? = null
+    private lateinit var notice: LinearLayout
+    /** Últimas notificaciones, la más nueva primero. Solo en memoria; nunca en disco. */
+    private val notices = ArrayDeque<Mensaje.Notif>()
+    private var noticeIndex = 0
+    /** Cuántas de las más nuevas no se han escuchado todavía. */
+    private var unread = 0
+    private lateinit var unreadBadge: TextView
+    private lateinit var ticker: LedTickerView
+    /** Lo último que mandó el Motorola por el enlace. */
+    private var linkSong: Mensaje.Cancion? = null
+    /** Lo que suena en este S40 (solo con destino "este teléfono" y acceso concedido). */
+    private var localMusic: SesionMusica? = null
+    private val hideNotice = Runnable { notice.visibility = android.view.View.GONE }
 
     private val updateScreen = object : Runnable {
         override fun run() {
@@ -57,7 +69,6 @@ class MainActivity : Activity() {
         window.setDecorFitsSystemWindows(false)
         hideSystemBars()
         setContentView(R.layout.activity_main)
-        clock = findViewById(R.id.clock)
         speed = findViewById(R.id.speed)
         speedUnit = findViewById(R.id.speed_unit)
         distance = findViewById(R.id.distance)
@@ -65,32 +76,81 @@ class MainActivity : Activity() {
         audioManager = getSystemService(AudioManager::class.java)
         vibrator = getSystemService(Vibrator::class.java)
         val infoPanel = findViewById<LinearLayout>(R.id.info_panel)
-        infoPanel.setOnClickListener { sayStatus() }
-        infoPanel.setOnLongClickListener {
-            toggleRide()
-            true
+        // Un toque: hora. Dos toques: última notificación. Mantener: iniciar o detener recorrido.
+        val gestures = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                when {
+                    notice.visibility == android.view.View.VISIBLE -> readShownNotice()
+                    unread > 0 -> {
+                        // Mensajes sin escuchar tienen prioridad sobre la hora.
+                        noticeIndex = unread - 1
+                        displayNotice(noticeIndex)
+                        readShownNotice()
+                    }
+                    else -> sayStatus()
+                }
+                return true
+            }
+            override fun onDoubleTap(e: MotionEvent): Boolean {
+                sayLastNotice()
+                return true
+            }
+            override fun onLongPress(e: MotionEvent) = toggleRide()
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                val start = e1 ?: return false
+                val dx = e2.x - start.x
+                val dy = e2.y - start.y
+                val minPx = SWIPE_MIN_PX * resources.displayMetrics.density
+                if (-dy > minPx && -dy > kotlin.math.abs(dx)) {
+                    // Deslizar hacia arriba: quitar el aviso y marcar todo como leído.
+                    dismissNotices()
+                    return true
+                }
+                if (kotlin.math.abs(dx) < minPx ||
+                    kotlin.math.abs(dx) < kotlin.math.abs(dy)
+                ) return false
+                browseNotices(older = dx < 0)
+                return true
+            }
+        })
+        val touch = android.view.View.OnTouchListener { view, event ->
+            if (event.actionMasked == MotionEvent.ACTION_UP) view.performClick()
+            gestures.onTouchEvent(event)
         }
+        infoPanel.setOnTouchListener(touch)
         findViewById<MusicWheelView>(R.id.music_wheel).onControl = ::handleMusicControl
         speech = SpeechController(this)
         targetStatus = findViewById(R.id.target_status)
+        ticker = findViewById(R.id.ticker)
+        ticker.setOnClickListener { onTickerTapped() }
         findViewById<android.view.View>(R.id.menu_button).setOnClickListener(::showMenu)
         if (isMotorolaTarget() && hasBluetoothPermissions()) {
             startMotorola()
         } else {
             useThisPhone()
         }
+        notice = findViewById(R.id.notice)
+        notice.setOnTouchListener(touch)
+        unreadBadge = findViewById(R.id.unread_badge)
         linkStatus = findViewById(R.id.link_status)
         startLinkIfPossible()
+        updateTicker()
     }
 
     override fun onResume() {
         super.onResume()
         handler.removeCallbacks(updateScreen)
         updateScreen.run()
+        // Al volver de Ajustes con el acceso recién concedido.
+        if (!isMotorolaTarget() && localMusic == null) startLocalMusic()
+        ticker.reanudar()
     }
 
     override fun onPause() {
         handler.removeCallbacks(updateScreen)
+        // Pantalla apagada o app en segundo plano: la franja deja de animar.
+        ticker.pausar()
         super.onPause()
     }
 
@@ -98,6 +158,7 @@ class MainActivity : Activity() {
         speech.close()
         hidRemote?.stop()
         enlace?.detener()
+        localMusic?.detener()
         super.onDestroy()
     }
 
@@ -114,7 +175,6 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
-        clock.text = LocalTime.now().format(timeFormat)
         if (RideState.running && !RideState.hasFix) {
             speed.text = getString(R.string.searching_gps)
             speedUnit.text = ""
@@ -210,6 +270,83 @@ class MainActivity : Activity() {
 
     private fun isVoiceOnMotorola(): Boolean = prefs.getString(KEY_VOICE, TARGET_PHONE) == TARGET_MOTOROLA
 
+    /** Deslizar en la pantallita: muestra la última; más deslizamientos recorren las anteriores. */
+    private fun browseNotices(older: Boolean) {
+        if (notices.isEmpty()) {
+            Toast.makeText(this, R.string.no_notifications, Toast.LENGTH_SHORT).show()
+            return
+        }
+        noticeIndex = when {
+            notice.visibility != android.view.View.VISIBLE -> 0
+            older -> (noticeIndex + 1).coerceAtMost(notices.size - 1)
+            else -> (noticeIndex - 1).coerceAtLeast(0)
+        }
+        displayNotice(noticeIndex)
+    }
+
+    private fun displayNotice(index: Int) {
+        val notif = notices[index]
+        findViewById<TextView>(R.id.notice_app).text =
+            if (notices.size > 1) getString(R.string.notice_position, notif.app, index + 1, notices.size) else notif.app
+        findViewById<TextView>(R.id.notice_title).text = notif.titulo
+        findViewById<TextView>(R.id.notice_text).text = notif.texto
+        notice.visibility = android.view.View.VISIBLE
+        handler.removeCallbacks(hideNotice)
+        handler.postDelayed(hideNotice, NOTICE_MS)
+    }
+
+    /** Un toque sobre el aviso: dice el texto del mensaje que se está viendo. */
+    private fun dismissNotices() {
+        if (unread == 0 && notice.visibility != android.view.View.VISIBLE) return
+        unread = 0
+        showUnread()
+        handler.removeCallbacks(hideNotice)
+        handler.post(hideNotice)
+    }
+
+    private fun showUnread() {
+        unreadBadge.text = getString(R.string.unread_badge, unread)
+        unreadBadge.visibility = if (unread > 0) android.view.View.VISIBLE else android.view.View.GONE
+    }
+
+    private fun readShownNotice() {
+        val notif = notices.getOrNull(noticeIndex) ?: return
+        // Escuchar uno marca como leídos ese y los más viejos.
+        if (noticeIndex < unread) {
+            unread = noticeIndex
+            showUnread()
+        }
+        say(
+            if (notif.texto.isBlank()) getString(R.string.speech_message_empty)
+            else getString(R.string.speech_message_says, notif.texto)
+        )
+        // Ya leído: se quita de la pantalla; la voz termina de decirlo.
+        handler.removeCallbacks(hideNotice)
+        handler.post(hideNotice)
+    }
+
+    /** Dice un texto con la voz elegida: el Motorola si hay enlace, si no este teléfono. */
+    private fun say(text: String) {
+        val link = enlace
+        if (isVoiceOnMotorola() && link != null && link.conectado) {
+            link.enviar(Mensaje.Decir(text))
+        } else {
+            speech.speakText(text)
+            if (isVoiceOnMotorola()) link?.reintentar()
+        }
+    }
+
+    private fun sayLastNotice() {
+        val notif = notices.firstOrNull()
+        val text = if (notif == null) {
+            getString(R.string.speech_no_notification)
+        } else {
+            getString(R.string.speech_notification, notif.app, notif.titulo) +
+                if (notif.texto.isBlank()) "" else " " + getString(R.string.speech_notification_text, notif.texto)
+        }
+        say(text)
+    }
+
     /** Con "Voz en: Motorola" y enlace activo, lo dice el Motorola; si no, este teléfono. */
     private fun sayStatus() {
         val link = enlace
@@ -221,6 +358,8 @@ class MainActivity : Activity() {
             }
         } else {
             speech.speakStatus(RideState.running, RideState.speedKmh.toInt())
+            // Sin sondeo: se reintenta el enlace solo cuando lo usas.
+            if (isVoiceOnMotorola()) link?.reintentar()
         }
     }
 
@@ -231,14 +370,38 @@ class MainActivity : Activity() {
             showLinkStatus()
             return
         }
-        val link = EnlaceCliente(this, address, { showLinkStatus() }) { mensaje ->
+        val link = EnlaceCliente(this, address, { estado ->
+            if (estado != EnlaceCliente.Estado.CONECTADO) linkSong = null
+            showLinkStatus()
+            updateTicker()
+        }) { mensaje ->
             when (mensaje) {
-                is Mensaje.Hola, is Mensaje.Decir, is Mensaje.Notif -> Unit
+                is Mensaje.Notif -> showNotice(mensaje)
+                is Mensaje.Cancion -> {
+                    linkSong = mensaje
+                    updateTicker()
+                }
+                is Mensaje.Hola, is Mensaje.Decir -> Unit
             }
         }
         enlace = link
         link.iniciar()
         showLinkStatus()
+    }
+
+    /** Muestra la notificación unos segundos con letra grande y vibra. No se guarda. */
+    private fun showNotice(notif: Mensaje.Notif) {
+        notices.addFirst(notif)
+        while (notices.size > MAX_NOTICES) notices.removeLast()
+        unread = (unread + 1).coerceAtMost(notices.size)
+        showUnread()
+        noticeIndex = 0
+        displayNotice(0)
+        ticker.mostrarUnaVez(getString(R.string.ticker_notice, notif.app, notif.titulo))
+        say(getString(R.string.speech_new_message, notif.titulo.ifBlank { notif.app }))
+        if (vibrator.hasVibrator()) {
+            vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 120, 100, 120), -1))
+        }
     }
 
     private fun showLinkStatus() {
@@ -291,6 +454,63 @@ class MainActivity : Activity() {
         wasConnected = false
         targetStatus.setText(R.string.target_status_phone)
         targetStatus.setTextColor(COLOR_NORMAL)
+        startLocalMusic()
+        updateTicker()
+    }
+
+    /** Franja con destino "este teléfono": lee la música del S40 si hay acceso. */
+    private fun startLocalMusic() {
+        if (localMusic != null) return
+        val music = SesionMusica(this, android.content.ComponentName(this, MusicaS40Service::class.java)) { updateTicker() }
+        if (music.iniciar()) localMusic = music
+    }
+
+    private fun stopLocalMusic() {
+        localMusic?.detener()
+        localMusic = null
+    }
+
+    private fun updateTicker() {
+        if (!::ticker.isInitialized) return
+        val song: Mensaje.Cancion? = if (isMotorolaTarget()) {
+            val link = enlace
+            if (link == null || !link.conectado) {
+                ticker.mostrar(getString(R.string.ticker_no_link), false)
+                return
+            }
+            linkSong
+        } else {
+            val local = localMusic
+            if (local == null) {
+                ticker.mostrar(getString(R.string.ticker_no_access), true)
+                return
+            }
+            local.actual
+        }
+        val text = song?.let { if (it.artista.isBlank()) it.titulo else getString(R.string.ticker_song, it.artista, it.titulo) }
+        when (song?.estado) {
+            Mensaje.Cancion.Estado.REPRODUCIENDO -> ticker.mostrar(text.orEmpty(), true)
+            Mensaje.Cancion.Estado.PAUSA -> ticker.mostrar(getString(R.string.ticker_paused, text.orEmpty()), false)
+            null, Mensaje.Cancion.Estado.NADA -> ticker.mostrar(getString(R.string.ticker_no_music), false)
+        }
+    }
+
+    /** Tocar la franja sin acceso: explicar y abrir el ajuste del permiso. */
+    private fun onTickerTapped() {
+        if (isMotorolaTarget() || localMusic != null) return
+        AlertDialog.Builder(this)
+            .setTitle(R.string.music_access_title)
+            .setMessage(R.string.music_access_explanation)
+            .setPositiveButton(R.string.permissions_continue) { _, _ ->
+                startActivity(
+                    Intent(android.provider.Settings.ACTION_NOTIFICATION_LISTENER_DETAIL_SETTINGS).putExtra(
+                        android.provider.Settings.EXTRA_NOTIFICATION_LISTENER_COMPONENT_NAME,
+                        android.content.ComponentName(this, MusicaS40Service::class.java).flattenToString()
+                    )
+                )
+            }
+            .setNegativeButton(R.string.permissions_cancel, null)
+            .show()
     }
 
     private fun hasBluetoothPermissions(): Boolean = BLUETOOTH_PERMISSIONS.all {
@@ -315,6 +535,8 @@ class MainActivity : Activity() {
     /** Registra el HID solo mientras el destino es el Motorola. */
     private fun startMotorola() {
         prefs.edit().putString(KEY_TARGET, TARGET_MOTOROLA).apply()
+        stopLocalMusic()
+        updateTicker()
         if (hidRemote != null) return
         val remote = HidMediaRemote(this, prefs.getString(KEY_MOTOROLA_ADDRESS, null), ::onHidStatus)
         hidRemote = remote
@@ -331,6 +553,7 @@ class MainActivity : Activity() {
             startLinkIfPossible()
         }
         val connected = status.connectedName != null
+        if (connected && !wasConnected) enlace?.reintentar()
         if (connected && !wasConnected) {
             Toast.makeText(this, R.string.motorola_connected_toast, Toast.LENGTH_SHORT).show()
         } else if (!connected && wasConnected) {
@@ -446,6 +669,9 @@ class MainActivity : Activity() {
         private const val MENU_VOICE_PHONE = 3
         private const val MENU_VOICE_MOTOROLA = 4
         private const val KEY_VOICE = "voz_en"
+        private const val NOTICE_MS = 20_000L
+        private const val MAX_NOTICES = 5
+        private const val SWIPE_MIN_PX = 60
         private const val COLOR_OFF = 0xFF9E9E9E.toInt()
         private const val COLOR_NORMAL = 0xFFFFFFFF.toInt()
         private const val COLOR_OK = 0xFF4CAF50.toInt()

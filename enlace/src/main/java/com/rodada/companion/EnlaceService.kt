@@ -17,6 +17,7 @@ import android.util.Log
 import com.rodada.enlace.CanalEnlace
 import com.rodada.enlace.Enlace
 import com.rodada.enlace.Mensaje
+import com.rodada.enlace.SesionMusica
 import java.io.IOException
 
 /**
@@ -31,12 +32,18 @@ class EnlaceService : Service() {
     @Volatile private var servidor: BluetoothServerSocket? = null
     @Volatile private var activo = false
     private var canal: CanalEnlace? = null
+    /** Lo que suena en el Motorola; manda CANCION al S40 solo cuando cambia. */
+    private lateinit var musica: SesionMusica
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        actual = this
         voz = Voz(this)
+        musica = SesionMusica(this, android.content.ComponentName(this, AvisosService::class.java)) { cancion ->
+            canal?.enviar(cancion)
+        }
         getSystemService(NotificationManager::class.java).createNotificationChannel(
             NotificationChannel(CANAL_NOTIFICACION, getString(R.string.notification_channel), NotificationManager.IMPORTANCE_LOW)
         )
@@ -46,6 +53,7 @@ class EnlaceService : Service() {
         startForeground(ID_NOTIFICACION, notificacion(getString(R.string.state_waiting)),
             ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE)
         if (!activo) escuchar()
+        musica.iniciar()
         return START_STICKY
     }
 
@@ -91,15 +99,27 @@ class EnlaceService : Service() {
         canal = nuevo
         nuevo.iniciar()
         nuevo.enviar(Mensaje.Hola(Enlace.VERSION, android.os.Build.MODEL))
+        // Si el acceso a notificaciones llegó después, se reintenta al conectar.
+        musica.iniciar()
+        nuevo.enviar(musica.actual)
         Log.d(TAG, "conectado con ${socket.remoteDevice.address}")
         ponerEstado(EnlaceEstado.Estado.Conectado(nombre))
     }
+
+    /** Manda un mensaje al S40 si hay enlace. Llamar desde el hilo principal. */
+    fun enviar(mensaje: Mensaje): Boolean {
+        val c = canal ?: return false
+        c.enviar(mensaje)
+        return true
+    }
+
+    fun decir(texto: String) = voz.decir(texto)
 
     private fun recibir(mensaje: Mensaje) {
         Log.d(TAG, "recibido $mensaje")
         when (mensaje) {
             is Mensaje.Decir -> voz.decir(mensaje.texto)
-            is Mensaje.Hola, is Mensaje.Notif -> Unit
+            is Mensaje.Hola, is Mensaje.Notif, is Mensaje.Cancion -> Unit
         }
     }
 
@@ -127,6 +147,7 @@ class EnlaceService : Service() {
     }
 
     override fun onDestroy() {
+        if (actual === this) actual = null
         activo = false
         try {
             servidor?.close()
@@ -135,12 +156,16 @@ class EnlaceService : Service() {
         servidor = null
         canal?.cerrar()
         canal = null
+        musica.detener()
         voz.cerrar()
         if (EnlaceEstado.estado !is EnlaceEstado.Estado.Error) EnlaceEstado.estado = EnlaceEstado.Estado.Apagado
         super.onDestroy()
     }
 
     companion object {
+        /** El servicio en marcha, para que AvisosService mande por el enlace (mismo proceso). */
+        var actual: EnlaceService? = null
+            private set
         private const val TAG = "RodadaEnlace"
         private const val CANAL_NOTIFICACION = "enlace"
         private const val ID_NOTIFICACION = 1
