@@ -6,32 +6,31 @@ plugins {
 }
 
 android {
-    namespace = "com.rodada.app"
+    namespace = "com.rodada.companion"
     compileSdk = 36
     buildToolsVersion = "36.1.0"
 
     defaultConfig {
-        applicationId = "com.rodada.app"
-        minSdk = 33
+        applicationId = "com.rodada.companion"
+        minSdk = 34
         targetSdk = 36
         versionCode = 1
         versionName = "0.1"
     }
 
-    sourceSets {
-        // Protocolo Rodada Enlace, compartido con el módulo companion.
-        getByName("main").java.srcDir("../shared/kotlin")
-    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
-
 }
 
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
     }
+}
+
+dependencies {
+    implementation(project(":comun"))
 }

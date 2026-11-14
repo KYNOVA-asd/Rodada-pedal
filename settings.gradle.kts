@@ -15,5 +15,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Rodada"
-include(":app")
-include(":companion")
+include(":manubrio")
+include(":enlace")
+include(":comun")

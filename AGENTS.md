@@ -5,17 +5,35 @@ El contexto del producto está en README.md; léelo antes de empezar.
 
 ## Proyecto
 
-Rodada: app Android nativa para usar un SENWA S40 como computadora de
-bici en el manubrio. Velocidad por GPS, hora, avisos por voz y, más
-adelante, comandos de voz y notificaciones.
+Rodada: dos apps Android nativas.
+- Rodada (S40): computadora de bici en el manubrio. Velocidad por GPS,
+  hora, rueda de música, avisos por voz.
+- Rodada Enlace (Motorola): va en la mochila; recibe órdenes del S40 y
+  le manda notificaciones, llamadas y la canción que suena.
 
-## Dispositivo objetivo
+## Estructura del repo
 
-- SENWA S40, Android 13 Go (API 33), 2 GB de RAM, pantalla de 4",
-  batería de 1500 mAh.
-- Es el único dispositivo de pruebas. Conectado por USB con ADB.
-- Sin Chrome ni Asistente de Google: no dependas de ellos.
-- Conserva Servicios de Google, WebView y el motor de voz de Android.
+- manubrio/: app del S40 ("Rodada"). Paquete com.rodada.app (se
+  conserva para que el S40 actualice sin desinstalar).
+- enlace/: app del Motorola ("Rodada Enlace"). Paquete
+  com.rodada.companion.
+- comun/: librería compartida por las dos: el protocolo Bluetooth
+  (com.rodada.enlace.Enlace, Mensaje, CanalEnlace) y su versión.
+- docs/: reportes y notas (por ejemplo docs/hid.md).
+
+## Dispositivos
+
+| Teléfono | App | Serial ADB | Sistema |
+|---|---|---|---|
+| SENWA S40 | manubrio | S404823093183 | Android 13 Go (API 33), armeabi-v7a, 2 GB, 1500 mAh, 4" |
+| moto g24 power | enlace | ZT322NSDX9 | Android 14 (API 34), arm64-v8a |
+
+- Los dos se conectan por USB con ADB. Con los dos conectados usa
+  siempre adb -s SERIAL.
+- S40: sin Chrome ni Asistente de Google; no dependas de ellos.
+  Conserva Servicios de Google, WebView y el motor de voz.
+- Si el Motorola no aparece en adb, revisa que spacedesk (en la laptop)
+  no lo tenga en modo accesorio USB.
 
 ## Entorno
 
@@ -29,34 +47,31 @@ adelante, comandos de voz y notificaciones.
 
 - Kotlin, vistas XML simples o Compose mínimo; elige lo más ligero.
 - Gradle con wrapper (gradlew) incluido en el repo.
-- minSdk 33. compileSdk y targetSdk: la plataforma instalada en el SDK.
-- Dos módulos:
-  - app: Rodada, para el S40. Paquete com.rodada.app.
-  - companion: "Rodada Enlace", para el Motorola del usuario.
-    Paquete com.rodada.companion.
-- Protocolo entre los dos (Bluetooth clásico RFCOMM, mensajes de texto):
-  shared/kotlin/com/rodada/enlace/Enlace.kt, documentado ahí. Los dos
-  módulos lo compilan como fuente compartida (sourceSets). Si cambias el
+- manubrio: minSdk 33. enlace: minSdk 34. comun: minSdk 29.
+  compileSdk y targetSdk: la plataforma instalada en el SDK (36).
+- Protocolo (Bluetooth clásico RFCOMM, mensajes de texto): documentado
+  en comun/src/main/java/com/rodada/enlace/Enlace.kt. Si cambias el
   formato, sube Enlace.VERSION. El Motorola escucha; el S40 se conecta.
 
 ## Comandos
 
-Compilar:
+Compilar cada app:
 
-    gradlew assembleDebug
+    gradlew :manubrio:assembleDebug
+    gradlew :enlace:assembleDebug
 
-Instalar en el S40 (con los dos teléfonos conectados, usa -s con el
-serial; el del S40 es S404823093183):
+Instalar Rodada en el S40:
 
-    adb -s S404823093183 install -r app\build\outputs\apk\debug\app-debug.apk
+    adb -s S404823093183 install -r manubrio\build\outputs\apk\debug\manubrio-debug.apk
 
 Instalar Rodada Enlace en el Motorola:
 
-    adb -s <serial del Motorola> install -r companion\build\outputs\apk\debug\companion-debug.apk
+    adb -s ZT322NSDX9 install -r enlace\build\outputs\apk\debug\enlace-debug.apk
 
 Ver registros:
 
-    adb logcat
+    adb -s S404823093183 logcat
+    adb -s ZT322NSDX9 logcat
 
 Después de cada cambio, compila y confirma que termina sin errores
 antes de dar la tarea por terminada.
@@ -93,7 +108,7 @@ antes de dar la tarea por terminada.
   instalada. Un toque en el panel de arriba dice la hora y, durante un
   recorrido, la velocidad. Pide foco de audio temporal y lo suelta al
   terminar de hablar.
-- Control del Motorola por Bluetooth HID (HidMediaRemote): el S40 se
+- Control del Motorola por Bluetooth HID (HidMediaRemote, ver docs/hid.md): el S40 se
   presenta como control multimedia (descriptor solo Consumer Control,
   sin teclado) y manda las cinco teclas de la rueda al otro teléfono,
   sin instalarle nada. Probado y funcionando con YouTube Music en el
@@ -134,6 +149,8 @@ Trabaja solo en la fase actual. No adelantes las siguientes.
 - Cambios pequeños, un commit por cambio, mensajes en español.
 - No borres ni reescribas archivos que no sean parte de la tarea.
 - No subas al repo claves, keystores ni local.properties.
+- Enlace: nada sale a internet. No guardes el contenido de las
+  notificaciones en disco ni en logs. Sin sondeos constantes.
 - Si algo no se puede hacer en Android 13 Go o gasta mucha batería,
   dilo y propone una alternativa en lugar de forzarlo.
 - Si una decisión no está en README.md ni aquí, pregunta.

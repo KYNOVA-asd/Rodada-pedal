@@ -5,7 +5,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.widget.Button
 import android.widget.TextView
@@ -56,14 +55,11 @@ class MainActivity : Activity() {
         boton.setText(if (servicioActivo()) R.string.stop else R.string.start)
     }
 
-    private fun permisos(): Array<String> = buildList {
-        add(Manifest.permission.BLUETOOTH_CONNECT)
-        if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
-    }.toTypedArray()
+    private fun permisos(): Array<String> =
+        arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.POST_NOTIFICATIONS)
 
     private fun tienePermisos(): Boolean = permisos().all {
-        Build.VERSION.SDK_INT < 31 && it == Manifest.permission.BLUETOOTH_CONNECT ||
-            checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
+        checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun explicarPermisos() {

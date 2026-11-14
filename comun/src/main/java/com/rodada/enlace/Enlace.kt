@@ -3,9 +3,9 @@ package com.rodada.enlace
 import java.util.UUID
 
 /**
- * Protocolo "Rodada Enlace": mensajes de texto entre el S40 (módulo app) y el
- * Motorola (módulo companion) por Bluetooth clásico (RFCOMM). Este archivo lo
- * comparten los dos módulos; si cambias el formato, sube [VERSION].
+ * Protocolo "Rodada Enlace": mensajes de texto entre el S40 (módulo manubrio) y
+ * el Motorola (módulo enlace) por Bluetooth clásico (RFCOMM). Vive en el módulo
+ * comun, del que dependen los dos; si cambias el formato, sube [VERSION].
  *
  * Conexión
  * - El Motorola escucha con listenUsingRfcommWithServiceRecord([NOMBRE_SERVICIO], [UUID]).

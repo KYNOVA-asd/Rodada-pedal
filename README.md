@@ -93,14 +93,30 @@ Google, WebView y el motor de voz de Android.
 - Sin Android Studio y sin emulador: se prueba en el S40 por USB.
 - Lenguaje: Kotlin nativo.
 
+## Estructura del repo
+
+| Carpeta | Qué es | Se instala en |
+|---|---|---|
+| `manubrio/` | App "Rodada": la pantalla y el control que van en la bici (velocímetro, rueda, voz, franja de canción). | SENWA S40 |
+| `enlace/` | App "Rodada Enlace": va en la mochila; recibe órdenes del S40 y le manda notificaciones, llamadas y la canción que suena. | moto g24 power |
+| `comun/` | Código compartido: el protocolo de mensajes por Bluetooth y su versión. | (librería de las dos) |
+| `docs/` | Reportes y notas, por ejemplo `docs/hid.md`. | — |
+
 ## Compilar e instalar
 
-    gradlew assembleDebug
-    adb install -r app\build\outputs\apk\debug\app-debug.apk
+Con los dos teléfonos conectados por USB se elige cada uno por su serial:
+S40 = `S404823093183`, moto g24 power = `ZT322NSDX9`.
+
+    gradlew :manubrio:assembleDebug
+    adb -s S404823093183 install -r manubrio\build\outputs\apk\debug\manubrio-debug.apk
+
+    gradlew :enlace:assembleDebug
+    adb -s ZT322NSDX9 install -r enlace\build\outputs\apk\debug\enlace-debug.apk
 
 Ver errores en vivo:
 
-    adb logcat
+    adb -s S404823093183 logcat
+    adb -s ZT322NSDX9 logcat
 
 ## Repositorio
 
