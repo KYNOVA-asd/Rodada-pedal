@@ -3,6 +3,7 @@ package com.rodada.app
 import android.Manifest
 import android.app.Activity
 import android.app.AlertDialog
+import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.LocationManager
@@ -18,6 +19,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.LinearLayout
+import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import java.time.LocalTime
@@ -34,6 +36,10 @@ class MainActivity : Activity() {
     private lateinit var audioManager: AudioManager
     private lateinit var vibrator: Vibrator
     private lateinit var speech: SpeechController
+    private lateinit var targetStatus: TextView
+    private var hidRemote: HidMediaRemote? = null
+    private var askedDiscoverable = false
+    private var wasConnected = false
 
     private val updateScreen = object : Runnable {
         override fun run() {
@@ -64,6 +70,13 @@ class MainActivity : Activity() {
         }
         findViewById<MusicWheelView>(R.id.music_wheel).onControl = ::handleMusicControl
         speech = SpeechController(this)
+        targetStatus = findViewById(R.id.target_status)
+        findViewById<android.view.View>(R.id.menu_button).setOnClickListener(::showMenu)
+        if (isMotorolaTarget() && hasBluetoothPermissions()) {
+            startMotorola()
+        } else {
+            useThisPhone()
+        }
     }
 
     override fun onResume() {
@@ -79,6 +92,7 @@ class MainActivity : Activity() {
 
     override fun onDestroy() {
         speech.close()
+        hidRemote?.stop()
         super.onDestroy()
     }
 
@@ -125,7 +139,22 @@ class MainActivity : Activity() {
     }
 
     private fun handleMusicControl(zone: MusicWheelView.Zone) {
-        when (zone) {
+        if (isMotorolaTarget()) {
+            val remote = hidRemote
+            if (remote == null || !remote.isConnected) {
+                Toast.makeText(this, R.string.motorola_not_connected, Toast.LENGTH_SHORT).show()
+                return
+            }
+            remote.sendKey(
+                when (zone) {
+                    MusicWheelView.Zone.UP -> HidMediaRemote.Key.VOLUME_UP
+                    MusicWheelView.Zone.DOWN -> HidMediaRemote.Key.VOLUME_DOWN
+                    MusicWheelView.Zone.PREVIOUS -> HidMediaRemote.Key.PREVIOUS
+                    MusicWheelView.Zone.NEXT -> HidMediaRemote.Key.NEXT
+                    MusicWheelView.Zone.CENTER -> HidMediaRemote.Key.PLAY_PAUSE
+                }
+            )
+        } else when (zone) {
             MusicWheelView.Zone.UP ->
                 audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, AudioManager.FLAG_SHOW_UI)
             MusicWheelView.Zone.DOWN ->
@@ -145,6 +174,122 @@ class MainActivity : Activity() {
         audioManager.dispatchMediaKeyEvent(
             KeyEvent(downTime, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, keyCode, 0)
         )
+    }
+
+    private fun showMenu(anchor: android.view.View) {
+        PopupMenu(this, anchor).apply {
+            menu.add(MENU_TARGET_GROUP, MENU_THIS_PHONE, 0, R.string.target_this_phone)
+            menu.add(MENU_TARGET_GROUP, MENU_MOTOROLA, 1, R.string.target_motorola)
+            menu.setGroupCheckable(MENU_TARGET_GROUP, true, true)
+            menu.findItem(if (isMotorolaTarget()) MENU_MOTOROLA else MENU_THIS_PHONE).isChecked = true
+            setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    MENU_THIS_PHONE -> useThisPhone()
+                    MENU_MOTOROLA -> onMotorolaChosen()
+                }
+                true
+            }
+            show()
+        }
+    }
+
+    private val prefs by lazy { getSharedPreferences(PREFS, MODE_PRIVATE) }
+
+    private fun isMotorolaTarget(): Boolean = prefs.getString(KEY_TARGET, TARGET_PHONE) == TARGET_MOTOROLA
+
+    /** La rueda controla este teléfono; se suelta el HID para no gastar Bluetooth. */
+    private fun useThisPhone() {
+        prefs.edit().putString(KEY_TARGET, TARGET_PHONE).apply()
+        hidRemote?.stop()
+        hidRemote = null
+        wasConnected = false
+        targetStatus.setText(R.string.target_status_phone)
+        targetStatus.setTextColor(COLOR_NORMAL)
+    }
+
+    private fun hasBluetoothPermissions(): Boolean = BLUETOOTH_PERMISSIONS.all {
+        checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun onMotorolaChosen() {
+        if (hasBluetoothPermissions()) {
+            startMotorola()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.hid_permissions_title)
+            .setMessage(R.string.hid_permissions_explanation)
+            .setPositiveButton(R.string.permissions_continue) { _, _ ->
+                requestPermissions(BLUETOOTH_PERMISSIONS, BLUETOOTH_PERMISSIONS_REQUEST)
+            }
+            .setNegativeButton(R.string.permissions_cancel, null)
+            .show()
+    }
+
+    /** Registra el HID solo mientras el destino es el Motorola. */
+    private fun startMotorola() {
+        prefs.edit().putString(KEY_TARGET, TARGET_MOTOROLA).apply()
+        if (hidRemote != null) return
+        val remote = HidMediaRemote(this, prefs.getString(KEY_MOTOROLA_ADDRESS, null), ::onHidStatus)
+        hidRemote = remote
+        askedDiscoverable = false
+        wasConnected = false
+        showTargetStatus(remote.status)
+        remote.start()
+    }
+
+    private fun onHidStatus(status: HidMediaRemote.Status) {
+        if (hidRemote == null) return
+        status.connectedAddress?.let { address ->
+            prefs.edit().putString(KEY_MOTOROLA_ADDRESS, address).apply()
+        }
+        val connected = status.connectedName != null
+        if (connected && !wasConnected) {
+            Toast.makeText(this, R.string.motorola_connected_toast, Toast.LENGTH_SHORT).show()
+        } else if (!connected && wasConnected) {
+            Toast.makeText(this, R.string.motorola_disconnected_toast, Toast.LENGTH_LONG).show()
+        }
+        wasConnected = connected
+        showTargetStatus(status)
+        // Primera vez (sin Motorola emparejado): hacer visible el S40 ya registrado como HID.
+        if (status.registered && !connected && !status.reconnecting && !askedDiscoverable &&
+            prefs.getString(KEY_MOTOROLA_ADDRESS, null) == null
+        ) {
+            askedDiscoverable = true
+            Toast.makeText(this, R.string.motorola_pair_hint, Toast.LENGTH_LONG).show()
+            startActivity(
+                Intent(BluetoothAdapter.ACTION_REQUEST_DISCOVERABLE)
+                    .putExtra(BluetoothAdapter.EXTRA_DISCOVERABLE_DURATION, 120)
+            )
+        }
+    }
+
+    private fun showTargetStatus(status: HidMediaRemote.Status) {
+        val error = when (status.lastError) {
+            HidMediaRemote.Error.BLUETOOTH_OFF -> R.string.hid_error_bluetooth_off
+            HidMediaRemote.Error.PROFILE_UNAVAILABLE, HidMediaRemote.Error.REGISTER_FAILED ->
+                R.string.hid_error_register
+            HidMediaRemote.Error.SEND_FAILED -> R.string.hid_error_send
+            null -> null
+        }
+        when {
+            status.connectedName != null -> {
+                targetStatus.setText(R.string.target_status_motorola_connected)
+                targetStatus.setTextColor(COLOR_OK)
+            }
+            error != null -> {
+                targetStatus.text = getString(R.string.target_status_motorola_error, getString(error))
+                targetStatus.setTextColor(COLOR_ERROR)
+            }
+            status.reconnecting -> {
+                targetStatus.setText(R.string.target_status_motorola_reconnecting)
+                targetStatus.setTextColor(COLOR_WARNING)
+            }
+            else -> {
+                targetStatus.setText(R.string.target_status_motorola_waiting)
+                targetStatus.setTextColor(COLOR_WARNING)
+            }
+        }
     }
 
     private fun hasRequiredPermissions(): Boolean =
@@ -171,6 +316,14 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == BLUETOOTH_PERMISSIONS_REQUEST) {
+            if (hasBluetoothPermissions()) {
+                startMotorola()
+            } else {
+                Toast.makeText(this, R.string.hid_permissions_needed, Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         if (requestCode != PERMISSIONS_REQUEST) return
         if (hasRequiredPermissions()) {
             startRide()
@@ -190,5 +343,22 @@ class MainActivity : Activity() {
 
     companion object {
         private const val PERMISSIONS_REQUEST = 100
+        private const val BLUETOOTH_PERMISSIONS_REQUEST = 101
+        private const val PREFS = "rodada"
+        private const val KEY_TARGET = "destino_rueda"
+        private const val KEY_MOTOROLA_ADDRESS = "motorola_direccion"
+        private const val TARGET_PHONE = "este_telefono"
+        private const val TARGET_MOTOROLA = "motorola"
+        private const val MENU_TARGET_GROUP = 1
+        private const val MENU_THIS_PHONE = 1
+        private const val MENU_MOTOROLA = 2
+        private const val COLOR_NORMAL = 0xFFFFFFFF.toInt()
+        private const val COLOR_OK = 0xFF4CAF50.toInt()
+        private const val COLOR_WARNING = 0xFFFFC107.toInt()
+        private const val COLOR_ERROR = 0xFFFF5252.toInt()
+        private val BLUETOOTH_PERMISSIONS = arrayOf(
+            Manifest.permission.BLUETOOTH_CONNECT,
+            Manifest.permission.BLUETOOTH_ADVERTISE
+        )
     }
 }

@@ -126,10 +126,38 @@
         </LinearLayout>
     </LinearLayout>
 
-    <com.rodada.app.MusicWheelView
-        android:id="@+id/music_wheel"
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="0.45"
-        android:contentDescription="@string/music_wheel_description" />
+        android:layout_weight="0.45">
+
+        <com.rodada.app.MusicWheelView
+            android:id="@+id/music_wheel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:contentDescription="@string/music_wheel_description" />
+
+        <Button
+            android:id="@+id/menu_button"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:layout_gravity="top|end"
+            android:layout_margin="8dp"
+            android:background="@drawable/button_outline"
+            android:contentDescription="@string/menu_description"
+            android:padding="0dp"
+            android:text="@string/menu_icon"
+            android:textColor="#FFFFFF"
+            android:textSize="30sp" />
+
+        <TextView
+            android:id="@+id/target_status"
+            android:layout_width="96dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|start"
+            android:layout_margin="8dp"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+    </FrameLayout>
 </LinearLayout>

@@ -30,6 +30,25 @@
     <string name="speech_half">y media</string>
     <string name="speech_minutes">y %1$d</string>
     <string name="speech_speed">Vas a %1$d kilómetros por hora.</string>
+    <string name="menu_icon">☰</string>
+    <string name="menu_description">Menú</string>
+    <string name="hid_permissions_title">Control por Bluetooth</string>
+    <string name="hid_permissions_explanation">Rodada usará Bluetooth para presentarse ante tu Motorola como un control de música y mandarle reproducir, pausa y volumen. Solo se activa cuando lo pides.</string>
+    <string name="hid_permissions_needed">Sin el permiso de dispositivos cercanos no se puede controlar el Motorola.</string>
+    <string name="target_this_phone">Rueda: este teléfono</string>
+    <string name="target_motorola">Rueda: Motorola</string>
+    <string name="target_status_phone">Este teléfono</string>
+    <string name="target_status_motorola_connected">● Motorola</string>
+    <string name="target_status_motorola_waiting">○ Motorola\nesperando…</string>
+    <string name="target_status_motorola_reconnecting">○ Motorola\nreconectando…</string>
+    <string name="target_status_motorola_error">Motorola:\n%1$s</string>
+    <string name="hid_error_bluetooth_off">enciende el Bluetooth</string>
+    <string name="hid_error_register">no se pudo registrar</string>
+    <string name="hid_error_send">falló el envío</string>
+    <string name="motorola_connected_toast">Motorola conectado</string>
+    <string name="motorola_disconnected_toast">Motorola desconectado. Reconectando…</string>
+    <string name="motorola_not_connected">El Motorola no está conectado</string>
+    <string name="motorola_pair_hint">En el Motorola: Ajustes, Bluetooth, vincular S40</string>
     <string-array name="speech_hours">
         <item>doce</item><item>una</item><item>dos</item><item>tres</item>
         <item>cuatro</item><item>cinco</item><item>seis</item><item>siete</item>

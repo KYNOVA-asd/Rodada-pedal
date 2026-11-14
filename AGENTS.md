@@ -67,6 +67,41 @@ antes de dar la tarea por terminada.
 - Textos de la interfaz en español, en strings.xml.
 - Pide permisos en el momento en que se necesitan, con explicación.
 
+## Lo que ya existe
+
+- Velocímetro (RideService, RideState): servicio en primer plano con GPS
+  solo durante el recorrido; velocidad, distancia, tiempo y reloj en
+  números grandes. Mantener pulsado el panel de arriba inicia o detiene
+  el recorrido. Exportar GPX: pendiente.
+- Rueda de música (MusicWheelView): cinco zonas (arriba volumen +,
+  abajo volumen −, izquierda anterior, derecha siguiente, centro
+  reproducir/pausa). Cada zona vibra. En este teléfono usa teclas
+  multimedia del sistema y muestra el indicador de volumen de Android.
+  Log por zona con la etiqueta RodadaRueda.
+- Voz (SpeechController): TextToSpeech del sistema con voz en español
+  instalada. Un toque en el panel de arriba dice la hora y, durante un
+  recorrido, la velocidad. Pide foco de audio temporal y lo suelta al
+  terminar de hablar.
+- Control del Motorola por Bluetooth HID (HidMediaRemote): el S40 se
+  presenta como control multimedia (descriptor solo Consumer Control,
+  sin teclado) y manda las cinco teclas de la rueda al otro teléfono,
+  sin instalarle nada. Probado y funcionando con YouTube Music en el
+  Motorola. Log con la etiqueta RodadaHid.
+  - Menú ☰ (esquina de la rueda): "Rueda: este teléfono" o
+    "Rueda: Motorola". El destino se guarda en SharedPreferences.
+  - El HID se registra solo mientras el destino es Motorola y se suelta
+    con unregisterApp() al cambiar de destino o cerrar la app.
+  - Indicador pequeño abajo a la izquierda (verde conectado, ámbar
+    reconectando, rojo error). Si se desconecta, reintenta cada 15 s.
+  - Emparejamiento la primera vez: desde Ajustes de Bluetooth del
+    Motorola, con el S40 visible ("S40").
+  - En el S40, registerApp() puede devolver false y aun así registrar;
+    se decide por onAppStatusChanged.
+  - Con HID no se puede saber qué canción suena en el Motorola (es de
+    un solo sentido; el S40 no tiene AVRCP Controller). Mostrar la
+    canción en pantalla solo es posible con destino "este teléfono" o
+    con una app compañera.
+
 ## Fases
 
 Trabaja solo en la fase actual. No adelantes las siguientes.
