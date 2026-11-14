@@ -18,4 +18,6 @@
     <string name="elapsed_value">%1$02d:%2$02d:%3$02d</string>
     <string name="ride_notification_title">Rodada: recorrido en curso</string>
     <string name="ride_notification_text">Midiendo velocidad y distancia con GPS</string>
+    <string name="ride_long_press_hint">Mantén pulsada esta mitad para iniciar o detener el recorrido</string>
+    <string name="music_wheel_description">Rueda de música: arriba sube volumen, abajo baja, izquierda anterior, derecha siguiente y centro reproduce o pausa</string>
 </resources>

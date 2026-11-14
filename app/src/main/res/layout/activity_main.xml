@@ -4,122 +4,127 @@
     android:layout_height="match_parent"
     android:background="#000000"
     android:orientation="vertical"
-    android:padding="12dp">
-
-    <TextView
-        android:id="@+id/clock"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="0.17"
-        android:autoSizeMaxTextSize="72sp"
-        android:autoSizeMinTextSize="40sp"
-        android:autoSizeStepGranularity="2sp"
-        android:autoSizeTextType="uniform"
-        android:fontFamily="monospace"
-        android:gravity="center"
-        android:includeFontPadding="false"
-        android:maxLines="1"
-        android:textColor="#FFFFFF"
-        android:textStyle="bold" />
+    android:padding="8dp">
 
     <LinearLayout
+        android:id="@+id/info_panel"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="0.48"
+        android:layout_weight="0.42"
+        android:contentDescription="@string/ride_long_press_hint"
         android:orientation="vertical">
 
         <TextView
-            android:id="@+id/speed"
+            android:id="@+id/clock"
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1"
-            android:autoSizeMaxTextSize="220sp"
-            android:autoSizeMinTextSize="44sp"
+            android:layout_weight="0.20"
+            android:autoSizeMaxTextSize="56sp"
+            android:autoSizeMinTextSize="28sp"
             android:autoSizeStepGranularity="2sp"
             android:autoSizeTextType="uniform"
-            android:fontFamily="sans"
+            android:fontFamily="monospace"
             android:gravity="center"
             android:includeFontPadding="false"
             android:maxLines="1"
             android:textColor="#FFFFFF"
             android:textStyle="bold" />
 
-        <TextView
-            android:id="@+id/speed_unit"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center"
-            android:text="@string/speed_unit"
-            android:textColor="#FFFFFF"
-            android:textSize="28sp" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="0.20"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:layout_height="0dp"
+            android:layout_weight="0.55"
             android:orientation="vertical">
 
             <TextView
+                android:id="@+id/speed"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:autoSizeMaxTextSize="180sp"
+                android:autoSizeMinTextSize="40sp"
+                android:autoSizeStepGranularity="2sp"
+                android:autoSizeTextType="uniform"
+                android:fontFamily="sans"
                 android:gravity="center"
-                android:text="@string/distance_label"
+                android:includeFontPadding="false"
+                android:maxLines="1"
                 android:textColor="#FFFFFF"
-                android:textSize="16sp" />
+                android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/distance"
+                android:id="@+id/speed_unit"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="monospace"
                 android:gravity="center"
+                android:text="@string/speed_unit"
                 android:textColor="#FFFFFF"
-                android:textSize="30sp"
-                android:textStyle="bold" />
+                android:textSize="20sp" />
         </LinearLayout>
 
         <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="0.25"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
-            <TextView
-                android:layout_width="match_parent"
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:text="@string/elapsed_label"
-                android:textColor="#FFFFFF"
-                android:textSize="16sp" />
+                android:layout_weight="1"
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/elapsed"
-                android:layout_width="match_parent"
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="@string/distance_label"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/distance"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="24sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:gravity="center"
-                android:textColor="#FFFFFF"
-                android:textSize="30sp"
-                android:textStyle="bold" />
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:text="@string/elapsed_label"
+                    android:textColor="#FFFFFF"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/elapsed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="24sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
-    <Button
-        android:id="@+id/ride_button"
+    <com.rodada.app.MusicWheelView
+        android:id="@+id/music_wheel"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="0.15"
-        android:background="@drawable/button_outline"
-        android:text="@string/start_ride"
-        android:textAllCaps="false"
-        android:textColor="#FFFFFF"
-        android:textSize="24sp" />
+        android:layout_weight="0.58"
+        android:contentDescription="@string/music_wheel_description" />
 </LinearLayout>

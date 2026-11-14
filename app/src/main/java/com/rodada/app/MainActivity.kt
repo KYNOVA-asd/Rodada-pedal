@@ -7,11 +7,16 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.LocationManager
+import android.media.AudioManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.view.KeyEvent
 import android.view.WindowManager
-import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import java.time.LocalTime
@@ -25,7 +30,8 @@ class MainActivity : Activity() {
     private lateinit var speedUnit: TextView
     private lateinit var distance: TextView
     private lateinit var elapsed: TextView
-    private lateinit var rideButton: Button
+    private lateinit var audioManager: AudioManager
+    private lateinit var vibrator: Vibrator
 
     private val updateScreen = object : Runnable {
         override fun run() {
@@ -44,17 +50,13 @@ class MainActivity : Activity() {
         speedUnit = findViewById(R.id.speed_unit)
         distance = findViewById(R.id.distance)
         elapsed = findViewById(R.id.elapsed)
-        rideButton = findViewById(R.id.ride_button)
-        rideButton.setOnClickListener {
-            if (RideState.running) {
-                stopService(Intent(this, RideService::class.java))
-                render()
-            } else if (hasRequiredPermissions()) {
-                startRide()
-            } else {
-                explainPermissions()
-            }
+        audioManager = getSystemService(AudioManager::class.java)
+        vibrator = getSystemService(Vibrator::class.java)
+        findViewById<LinearLayout>(R.id.info_panel).setOnLongClickListener {
+            toggleRide()
+            true
         }
+        findViewById<MusicWheelView>(R.id.music_wheel).onControl = ::handleMusicControl
     }
 
     override fun onResume() {
@@ -80,12 +82,45 @@ class MainActivity : Activity() {
         distance.text = getString(R.string.distance_value, RideState.distanceMeters / 1000f)
         val seconds = RideState.elapsedSeconds()
         elapsed.text = getString(R.string.elapsed_value, seconds / 3600, (seconds / 60) % 60, seconds % 60)
-        rideButton.setText(if (RideState.running) R.string.stop_ride else R.string.start_ride)
         if (RideState.running) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+    }
+
+    private fun toggleRide() {
+        if (RideState.running) {
+            stopService(Intent(this, RideService::class.java))
+            render()
+        } else if (hasRequiredPermissions()) {
+            startRide()
+        } else {
+            explainPermissions()
+        }
+    }
+
+    private fun handleMusicControl(zone: MusicWheelView.Zone) {
+        when (zone) {
+            MusicWheelView.Zone.UP ->
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_RAISE, 0)
+            MusicWheelView.Zone.DOWN ->
+                audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_LOWER, 0)
+            MusicWheelView.Zone.PREVIOUS -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PREVIOUS)
+            MusicWheelView.Zone.NEXT -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
+            MusicWheelView.Zone.CENTER -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
+        }
+        if (vibrator.hasVibrator()) {
+            vibrator.vibrate(VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE))
+        }
+    }
+
+    private fun sendMediaKey(keyCode: Int) {
+        val downTime = SystemClock.uptimeMillis()
+        audioManager.dispatchMediaKeyEvent(KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, keyCode, 0))
+        audioManager.dispatchMediaKeyEvent(
+            KeyEvent(downTime, SystemClock.uptimeMillis(), KeyEvent.ACTION_UP, keyCode, 0)
+        )
     }
 
     private fun hasRequiredPermissions(): Boolean =
