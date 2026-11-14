@@ -20,4 +20,19 @@
     <string name="ride_notification_text">Midiendo velocidad y distancia con GPS</string>
     <string name="ride_long_press_hint">Mantén pulsada esta mitad para iniciar o detener el recorrido</string>
     <string name="music_wheel_description">Rueda de música: arriba sube volumen, abajo baja, izquierda anterior, derecha siguiente y centro reproduce o pausa</string>
+    <string name="speech_ready">Rodada lista</string>
+    <string name="speech_missing_spanish">Descarga una voz en español en los ajustes del teléfono.</string>
+    <string name="speech_audio_unavailable">No se pudo usar el audio para hablar.</string>
+    <string name="speech_one_oclock">Es la una</string>
+    <string name="speech_other_hour">Son las %1$s</string>
+    <string name="speech_on_the_hour">en punto</string>
+    <string name="speech_quarter">y cuarto</string>
+    <string name="speech_half">y media</string>
+    <string name="speech_minutes">y %1$d</string>
+    <string name="speech_speed">Vas a %1$d kilómetros por hora.</string>
+    <string-array name="speech_hours">
+        <item>doce</item><item>una</item><item>dos</item><item>tres</item>
+        <item>cuatro</item><item>cinco</item><item>seis</item><item>siete</item>
+        <item>ocho</item><item>nueve</item><item>diez</item><item>once</item>
+    </string-array>
 </resources>

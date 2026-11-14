@@ -33,6 +33,7 @@ class MainActivity : Activity() {
     private lateinit var elapsed: TextView
     private lateinit var audioManager: AudioManager
     private lateinit var vibrator: Vibrator
+    private lateinit var speech: SpeechController
 
     private val updateScreen = object : Runnable {
         override fun run() {
@@ -53,11 +54,16 @@ class MainActivity : Activity() {
         elapsed = findViewById(R.id.elapsed)
         audioManager = getSystemService(AudioManager::class.java)
         vibrator = getSystemService(Vibrator::class.java)
-        findViewById<LinearLayout>(R.id.info_panel).setOnLongClickListener {
+        val infoPanel = findViewById<LinearLayout>(R.id.info_panel)
+        infoPanel.setOnClickListener {
+            speech.speakStatus(RideState.running, RideState.speedKmh.toInt())
+        }
+        infoPanel.setOnLongClickListener {
             toggleRide()
             true
         }
         findViewById<MusicWheelView>(R.id.music_wheel).onControl = ::handleMusicControl
+        speech = SpeechController(this)
     }
 
     override fun onResume() {
@@ -69,6 +75,11 @@ class MainActivity : Activity() {
     override fun onPause() {
         handler.removeCallbacks(updateScreen)
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        speech.close()
+        super.onDestroy()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
