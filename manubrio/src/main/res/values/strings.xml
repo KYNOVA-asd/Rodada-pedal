@@ -77,8 +77,9 @@
     <string name="ticker_no_link">SIN ENLACE</string>
     <string name="ticker_no_access">TOCA AQUI PARA VER LO QUE SUENA EN ESTE TELEFONO</string>
     <string name="ticker_notice">%1$s: %2$s</string>
+    <string name="ticker_radio">FM %1$s</string>
     <string name="music_access_title">Ver lo que suena</string>
-    <string name="music_access_explanation">Para mostrar la canción de este teléfono, Android pide activar el acceso a notificaciones de Rodada. Rodada solo lee la música; no lee ni guarda tus notificaciones.</string>
+    <string name="music_access_explanation">Para mostrar la canción o la emisora FM de este teléfono, Android pide activar el acceso a notificaciones de Rodada. Rodada solo lee la música y la frecuencia de Radio FM; no guarda tus notificaciones.</string>
     <string name="nav_speed">%1$d km/h</string>
     <string name="maps_missing">Google Maps no está instalado en este teléfono</string>
     <string name="nav_no_route">Sin ruta</string>

@@ -144,6 +144,7 @@ class MainActivity : Activity() {
         speech = SpeechController(this)
         targetStatus = findViewById(R.id.target_status)
         ticker = findViewById(R.id.ticker)
+        MusicaS40Service.onRadioChanged = { updateTicker() }
         ticker.setOnClickListener { onTickerTapped() }
         findViewById<android.view.View>(R.id.menu_button).setOnClickListener(::showMenu)
         if (isMotorolaTarget() && hasBluetoothPermissions()) {
@@ -179,6 +180,7 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        MusicaS40Service.onRadioChanged = null
         speech.close()
         hidRemote?.stop()
         enlace?.detener()
@@ -288,6 +290,14 @@ class MainActivity : Activity() {
                     return
                 }
             }
+        }
+        if (!isMotorolaTarget() && MusicaS40Service.currentStation != null &&
+            MusicaS40Service.sendRadioAction(zone)
+        ) {
+            if (vibrator.hasVibrator()) vibrator.vibrate(
+                VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE)
+            )
+            return
         }
         if (isMotorolaTarget()) {
             val remote = hidRemote
@@ -886,6 +896,12 @@ class MainActivity : Activity() {
 
     private fun updateTicker() {
         if (!::ticker.isInitialized) return
+        if (!isMotorolaTarget()) {
+            MusicaS40Service.currentStation?.let { station ->
+                ticker.mostrar(getString(R.string.ticker_radio, station.removeSuffix("MHz")), false, true)
+                return
+            }
+        }
         val song: Mensaje.Cancion? = if (isMotorolaTarget()) {
             val link = enlace
             if (link == null || !link.conectado) {

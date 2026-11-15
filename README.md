@@ -48,6 +48,8 @@ activa solo al iniciar un recorrido con una pulsación larga. La distancia
 aceptada por GPS se suma a un kilometraje total guardado en SQLite en el
 S40; se consulta y se puede reiniciar con confirmación desde MODE. El reloj
 muestra el día, la fecha y la hora.
+Cuando la Radio FM del S40 está activa, Rodada muestra su frecuencia desde
+la notificación de esa app y usa sus acciones para cambiar de emisora.
 
 ### Fase 2: voz
 - Avisos hablados: hora, velocidad, distancia y promedio.

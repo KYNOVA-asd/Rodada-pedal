@@ -40,6 +40,7 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
     private var base = IntArray(0)
     private var fecha = IntArray(0)
     private var baseCorre = false
+    private var baseCompacto = false
     private var unaVez = IntArray(0)
 
     private var fase = Fase.RELOJ
@@ -66,11 +67,12 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
         entrar(if (fase == Fase.RELOJ) Fase.TEXTO else Fase.RELOJ)
     }
 
-    fun mostrar(texto: String, desplazar: Boolean) {
+    fun mostrar(texto: String, desplazar: Boolean, compacto: Boolean = false) {
         val nuevas = columnas(texto)
-        if (nuevas.contentEquals(base) && desplazar == baseCorre) return
+        if (nuevas.contentEquals(base) && desplazar == baseCorre && compacto == baseCompacto) return
         base = nuevas
         baseCorre = desplazar
+        baseCompacto = compacto
         if (fase != Fase.UNA_VEZ) entrar(Fase.TEXTO)
     }
 
@@ -139,8 +141,13 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
 
     private fun paso(): Float {
         val original = alto() / FILAS.toFloat()
-        return if (fase == Fase.RELOJ && tira.isNotEmpty())
-            minOf(original, ancho() * 0.70f / tira.size.toFloat()) else original
+        return when {
+            fase == Fase.RELOJ && tira.isNotEmpty() ->
+                minOf(original, ancho() * 0.70f / tira.size.toFloat())
+            fase == Fase.TEXTO && baseCompacto && tira.isNotEmpty() ->
+                minOf(original, ancho() / tira.size.toFloat())
+            else -> original
+        }
     }
 
     private fun columnasVisibles(): Int = if (alto() <= 0) 0 else (ancho() / paso()).toInt()
