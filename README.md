@@ -41,7 +41,13 @@ Google, WebView y el motor de voz de Android.
 - Reloj siempre visible.
 - Pantalla de alto contraste, legible bajo el sol.
 - Sigue midiendo con la pantalla apagada.
-- Guarda el recorrido en GPX.
+- Guarda el recorrido en GPX (pendiente).
+
+En la versión actual, TIEMPO cuenta desde que se abre Rodada. El GPS se
+activa solo al iniciar un recorrido con una pulsación larga. La distancia
+aceptada por GPS se suma a un kilometraje total guardado en SQLite en el
+S40; se consulta y se puede reiniciar con confirmación desde MODE. El reloj
+muestra el día, la fecha y la hora.
 
 ### Fase 2: voz
 - Avisos hablados: hora, velocidad, distancia y promedio.

@@ -21,7 +21,6 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.LinearLayout
-import android.widget.PopupMenu
 import android.widget.TextView
 import android.widget.Toast
 import com.rodada.enlace.Mensaje
@@ -34,6 +33,7 @@ class MainActivity : Activity() {
     private lateinit var speedUnit: LedTextView
     private lateinit var distance: LedTextView
     private lateinit var elapsed: LedTextView
+    private val sessionStartedAtMs = SystemClock.elapsedRealtime()
     private lateinit var audioManager: AudioManager
     private lateinit var vibrator: Vibrator
     private lateinit var speech: SpeechController
@@ -215,8 +215,8 @@ class MainActivity : Activity() {
             }
             view.layoutParams = params
         }
-        half(R.id.screen_half, if (landscape) 0.6f else 0.55f)
-        half(R.id.wheel_half, if (landscape) 0.4f else 0.45f)
+        half(R.id.screen_half, if (landscape) 0.6f else 0.58f)
+        half(R.id.wheel_half, if (landscape) 0.4f else 0.42f)
         // De lado, la pantallita deja 6 dp a la derecha en vez de abajo.
         val screen = findViewById<android.view.View>(R.id.screen_half)
         (screen.layoutParams as LinearLayout.LayoutParams).setMargins(
@@ -249,7 +249,7 @@ class MainActivity : Activity() {
         }
         distance.text = getString(R.string.distance_value, RideState.distanceMeters / 1000f)
         updateNavSummary()
-        val seconds = RideState.elapsedSeconds()
+        val seconds = (SystemClock.elapsedRealtime() - sessionStartedAtMs) / 1000L
         elapsed.text = getString(R.string.elapsed_value, seconds / 3600, (seconds / 60) % 60, seconds % 60)
         if (RideState.running) {
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -313,6 +313,11 @@ class MainActivity : Activity() {
             MusicWheelView.Zone.NEXT -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_NEXT)
             MusicWheelView.Zone.CENTER -> sendMediaKey(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE)
         }
+        if (zone == MusicWheelView.Zone.UP || zone == MusicWheelView.Zone.DOWN) {
+            ticker.mostrarUnaVez(getString(
+                if (zone == MusicWheelView.Zone.UP) R.string.volume_up_feedback else R.string.volume_down_feedback
+            ))
+        }
         if (vibrator.hasVibrator()) {
             vibrator.vibrate(VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE))
         }
@@ -327,31 +332,55 @@ class MainActivity : Activity() {
     }
 
     private fun showMenu(anchor: android.view.View) {
-        PopupMenu(this, anchor).apply {
-            menu.add(MENU_TARGET_GROUP, MENU_THIS_PHONE, 0, R.string.target_this_phone)
-            menu.add(MENU_TARGET_GROUP, MENU_MOTOROLA, 1, R.string.target_motorola)
-            menu.setGroupCheckable(MENU_TARGET_GROUP, true, true)
-            menu.findItem(if (isMotorolaTarget()) MENU_MOTOROLA else MENU_THIS_PHONE).isChecked = true
-            menu.add(MENU_VOICE_GROUP, MENU_VOICE_PHONE, 2, R.string.voice_this_phone)
-            menu.add(MENU_VOICE_GROUP, MENU_VOICE_MOTOROLA, 3, R.string.voice_motorola)
-            menu.setGroupCheckable(MENU_VOICE_GROUP, true, true)
-            menu.findItem(if (isVoiceOnMotorola()) MENU_VOICE_MOTOROLA else MENU_VOICE_PHONE).isChecked = true
-            menu.add(MENU_FIND_GROUP, MENU_FIND, 4, if (findingMotorola) R.string.menu_find_stop else R.string.menu_find)
-            setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    MENU_FIND -> toggleFindMotorola()
-                    MENU_THIS_PHONE -> useThisPhone()
-                    MENU_MOTOROLA -> onMotorolaChosen()
-                    MENU_VOICE_PHONE -> prefs.edit().putString(KEY_VOICE, TARGET_PHONE).apply()
-                    MENU_VOICE_MOTOROLA -> {
-                        prefs.edit().putString(KEY_VOICE, TARGET_MOTOROLA).apply()
-                        withBluetoothPermission { startLinkIfPossible() }
-                    }
-                }
-                true
+        val content = layoutInflater.inflate(R.layout.dialog_mode, null)
+        val dialog = AlertDialog.Builder(this).setView(content).create()
+        fun choice(id: Int, selected: Boolean, label: Int, action: () -> Unit) {
+            content.findViewById<TextView>(id).apply {
+                text = getString(if (selected) R.string.mode_selected else R.string.mode_unselected, getString(label))
+                setOnClickListener { dialog.dismiss(); action() }
             }
-            show()
         }
+        choice(R.id.mode_wheel_phone, !isMotorolaTarget(), R.string.target_this_phone, ::useThisPhone)
+        choice(R.id.mode_wheel_motorola, isMotorolaTarget(), R.string.target_motorola, ::onMotorolaChosen)
+        choice(R.id.mode_voice_phone, !isVoiceOnMotorola(), R.string.voice_this_phone) {
+            prefs.edit().putString(KEY_VOICE, TARGET_PHONE).apply()
+        }
+        choice(R.id.mode_voice_motorola, isVoiceOnMotorola(), R.string.voice_motorola) {
+            prefs.edit().putString(KEY_VOICE, TARGET_MOTOROLA).apply()
+            withBluetoothPermission { startLinkIfPossible() }
+        }
+        OdometerStore(this).use { store ->
+            content.findViewById<TextView>(R.id.mode_odometer).text =
+                getString(R.string.mode_odometer_value, store.totalMeters() / 1000.0)
+        }
+        content.findViewById<TextView>(R.id.mode_reset).setOnClickListener {
+            if (RideState.running) {
+                Toast.makeText(this, R.string.mode_odometer_reset_running, Toast.LENGTH_SHORT).show()
+            } else {
+                AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(R.string.mode_odometer_reset_title)
+                    .setMessage(R.string.mode_odometer_reset_message)
+                    .setNegativeButton(R.string.permissions_cancel, null)
+                    .setPositiveButton(R.string.mode_odometer_reset) { _, _ ->
+                        OdometerStore(this).use { it.reset() }
+                        content.findViewById<TextView>(R.id.mode_odometer).text =
+                            getString(R.string.mode_odometer_value, 0.0)
+                    }
+                    .show()
+            }
+        }
+        content.findViewById<TextView>(R.id.mode_find).apply {
+            setText(if (findingMotorola) R.string.menu_find_stop else R.string.menu_find)
+            setOnClickListener { dialog.dismiss(); toggleFindMotorola() }
+        }
+        content.findViewById<TextView>(R.id.mode_close).setOnClickListener { dialog.dismiss() }
+        dialog.setOnShowListener {
+            dialog.window?.apply {
+                setBackgroundDrawableResource(R.color.watch_case)
+                setLayout((resources.displayMetrics.widthPixels * 0.94f).toInt(), WindowManager.LayoutParams.WRAP_CONTENT)
+            }
+        }
+        dialog.show()
         enlace?.reintentar()
     }
 

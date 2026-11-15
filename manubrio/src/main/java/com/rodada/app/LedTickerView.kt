@@ -6,7 +6,7 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
 import java.text.Normalizer
-import java.time.LocalTime
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
@@ -38,6 +38,7 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
     private val formatoHora = DateTimeFormatter.ofPattern("HH:mm")
 
     private var base = IntArray(0)
+    private var fecha = IntArray(0)
     private var baseCorre = false
     private var unaVez = IntArray(0)
 
@@ -104,21 +105,24 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
         removeCallbacks(cuadro)
         removeCallbacks(siguienteFase)
         fase = if (nueva == Fase.TEXTO && base.isEmpty()) Fase.RELOJ else nueva
-        val visibles = columnasVisibles()
         when (fase) {
             Fase.RELOJ -> {
-                tira = columnas(LocalTime.now().format(formatoHora))
+                val ahora = LocalDateTime.now()
+                val dia = arrayOf("LU", "MA", "MI", "JU", "VI", "SA", "DO")[ahora.dayOfWeek.value - 1]
+                fecha = columnas("%s %02d".format(dia, ahora.dayOfMonth))
+                tira = columnas(ahora.format(formatoHora))
                 corriendo = false
             }
             Fase.TEXTO -> {
                 tira = base
-                corriendo = baseCorre && base.size > visibles
+                corriendo = baseCorre && base.size > columnasVisibles()
             }
             Fase.UNA_VEZ -> {
                 tira = unaVez
                 corriendo = true
             }
         }
+        val visibles = columnasVisibles()
         posicion = -visibles
         invalidate()
         if (!enMarcha || width == 0) return
@@ -133,7 +137,11 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
 
     private fun ancho(): Int = width - paddingLeft - paddingRight
 
-    private fun paso(): Float = alto() / FILAS.toFloat()
+    private fun paso(): Float {
+        val original = alto() / FILAS.toFloat()
+        return if (fase == Fase.RELOJ && tira.isNotEmpty())
+            minOf(original, ancho() * 0.70f / tira.size.toFloat()) else original
+    }
 
     private fun columnasVisibles(): Int = if (alto() <= 0) 0 else (ancho() / paso()).toInt()
 
@@ -141,6 +149,19 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
         super.onDraw(canvas)
         val p = paso()
         if (p <= 0f) return
+        if (fase == Fase.RELOJ) {
+            val gap = 8f * resources.displayMetrics.density
+            val dateP = if (fecha.isEmpty()) 0f else minOf(
+                alto() / (FILAS * 2f),
+                (ancho() - tira.size * p - gap) / fecha.size
+            )
+            val total = fecha.size * dateP + gap + tira.size * p
+            val left = paddingLeft + (ancho() - total) / 2f
+            if (dateP > 0f) drawCells(canvas, fecha, left, paddingTop + (alto() - FILAS * dateP) / 2f, dateP)
+            drawCells(canvas, tira, left + fecha.size * dateP + gap,
+                paddingTop + (alto() - FILAS * p) / 2f, p)
+            return
+        }
         val visibles = columnasVisibles()
         val margenX = paddingLeft + (ancho() - visibles * p) / 2f
         val medio = p * 0.35f
@@ -158,6 +179,19 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
                 val y = paddingTop + p * f + p / 2f
                 canvas.drawRoundRect(x - medio, y - medio, x + medio, y + medio,
                     esquina, esquina, if (bits and (1 shl f) != 0) encendido else apagado)
+            }
+        }
+    }
+
+    private fun drawCells(canvas: Canvas, columns: IntArray, left: Float, top: Float, p: Float) {
+        val half = p * 0.35f
+        val corner = p * 0.07f
+        for (c in columns.indices) {
+            val x = left + c * p + p / 2f
+            for (f in 0 until FILAS) {
+                val y = top + f * p + p / 2f
+                canvas.drawRoundRect(x - half, y - half, x + half, y + half,
+                    corner, corner, if (columns[c] and (1 shl f) != 0) encendido else apagado)
             }
         }
     }

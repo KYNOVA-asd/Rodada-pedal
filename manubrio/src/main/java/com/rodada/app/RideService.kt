@@ -14,14 +14,20 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 
 class RideService : Service(), LocationListener {
     private lateinit var locationManager: LocationManager
     private var lastAcceptedLocation: Location? = null
+    private lateinit var odometer: OdometerStore
+    private var pendingMeters = 0.0
+    private var lastSaveMs = 0L
 
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(LocationManager::class.java)
+        odometer = OdometerStore(this)
+        lastSaveMs = SystemClock.elapsedRealtime()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -84,6 +90,8 @@ class RideService : Service(), LocationListener {
             lastAcceptedLocation = location
         } else if (meters >= MIN_DISTANCE_STEP_METERS) {
             RideState.distanceMeters += meters
+            pendingMeters += meters.toDouble()
+            if (SystemClock.elapsedRealtime() - lastSaveMs >= SAVE_INTERVAL_MS) saveDistance()
             lastAcceptedLocation = location
         }
     }
@@ -96,12 +104,22 @@ class RideService : Service(), LocationListener {
 
     override fun onDestroy() {
         locationManager.removeUpdates(this)
+        saveDistance()
+        odometer.close()
         RideState.finish()
         stopForeground(STOP_FOREGROUND_REMOVE)
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun saveDistance() {
+        if (pendingMeters > 0.0) {
+            odometer.addMeters(pendingMeters)
+            pendingMeters = 0.0
+        }
+        lastSaveMs = SystemClock.elapsedRealtime()
+    }
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
@@ -136,5 +154,6 @@ class RideService : Service(), LocationListener {
         private const val MIN_DISTANCE_STEP_METERS = 3f
         private const val MAX_BIKE_SPEED_MPS = 25f
         private const val JUMP_TOLERANCE_METERS = 10f
+        private const val SAVE_INTERVAL_MS = 10_000L
     }
 }

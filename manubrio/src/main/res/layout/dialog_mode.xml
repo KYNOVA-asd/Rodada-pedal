@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/watch_case"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/menu_icon"
+            android:textColor="#F1F2EE"
+            android:textSize="22sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/mode_wheel_label"
+            android:textColor="#C9D2D1"
+            android:textSize="13sp" />
+
+        <TextView android:id="@+id/mode_wheel_phone" style="@style/ModeChoice" />
+        <TextView android:id="@+id/mode_wheel_motorola" style="@style/ModeChoice" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/mode_voice_label"
+            android:textColor="#C9D2D1"
+            android:textSize="13sp" />
+
+        <TextView android:id="@+id/mode_voice_phone" style="@style/ModeChoice" />
+        <TextView android:id="@+id/mode_voice_motorola" style="@style/ModeChoice" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:text="@string/mode_odometer_label"
+            android:textColor="#C9D2D1"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="4dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/mode_odometer"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@drawable/info_panel_day"
+                android:gravity="center"
+                android:textColor="@color/lcd_day_ink"
+                android:textSize="23sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/mode_reset"
+                android:layout_width="102dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="6dp"
+                android:background="@drawable/mode_choice"
+                android:gravity="center"
+                android:text="@string/mode_odometer_reset"
+                android:textColor="@color/silver_ink"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+
+        <TextView android:id="@+id/mode_find" style="@style/ModeChoice"
+            android:layout_marginTop="14dp" />
+
+        <TextView
+            android:id="@+id/mode_close"
+            style="@style/ModeChoice"
+            android:layout_marginTop="14dp"
+            android:gravity="center"
+            android:text="@string/mode_close" />
+    </LinearLayout>
+</ScrollView>

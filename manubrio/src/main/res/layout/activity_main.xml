@@ -14,7 +14,7 @@
         android:layout_marginTop="12dp"
         android:layout_marginEnd="12dp"
         android:layout_marginBottom="6dp"
-        android:layout_weight="0.55">
+        android:layout_weight="0.58">
 
     <LinearLayout
         android:id="@+id/info_panel"
@@ -192,7 +192,7 @@
         android:id="@+id/wheel_half"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="0.45">
+        android:layout_weight="0.42">
 
         <com.rodada.app.MusicWheelView
             android:id="@+id/music_wheel"
