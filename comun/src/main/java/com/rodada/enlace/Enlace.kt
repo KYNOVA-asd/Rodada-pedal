@@ -58,13 +58,16 @@ import java.util.UUID
  * - UBICACION\tlatitud\tlongitud\thoraMs\tprecisionMetros
  *                              S40 → Motorola: posición GPS del recorrido
  *                              (versión 9). Se conserva solo el último punto.
+ * - PEDIR_UBICACION           Motorola → S40: solicita un punto reciente;
+ *                              lectura GPS única solo si Rodada está visible
+ *                              o ya hay recorrido activo (versión 10).
  *
  * Privacidad: el contenido de NOTIF, DECIR y NAV no se guarda en disco ni en logs.
  */
 object Enlace {
     val UUID: UUID = java.util.UUID.fromString("6f1c2a4e-8d3b-4c55-9a1e-52d0a7c3e901")
     const val NOMBRE_SERVICIO = "Rodada Enlace"
-    const val VERSION = 9
+    const val VERSION = 10
     const val MAX_LINEA = 2048
     const val MAX_APP = 40
     const val MAX_TITULO = 80
@@ -77,6 +80,7 @@ object Enlace {
 sealed class Mensaje {
     data class Hola(val version: Int, val nombre: String) : Mensaje()
     data class Ubicacion(val latitud: Double, val longitud: Double, val horaMs: Long, val precisionMetros: Float) : Mensaje()
+    object PedirUbicacion : Mensaje()
     data class Decir(val texto: String) : Mensaje()
     data class Notif(val app: String, val titulo: String, val texto: String) : Mensaje()
     data class Cancion(val estado: Estado, val artista: String, val titulo: String) : Mensaje() {
@@ -104,6 +108,7 @@ sealed class Mensaje {
         val campos = when (this) {
             is Hola -> listOf("HOLA", version.toString(), nombre)
             is Ubicacion -> listOf("UBICACION", latitud.toString(), longitud.toString(), horaMs.toString(), precisionMetros.toString())
+            PedirUbicacion -> listOf("PEDIR_UBICACION")
             is Decir -> listOf("DECIR", texto)
             is Notif -> listOf("NOTIF", app, titulo, texto)
             is Cancion -> listOf("CANCION", estado.name, artista, titulo)
@@ -142,6 +147,7 @@ sealed class Mensaje {
                         hora > 0L && precision.isFinite() && precision in 0f..100f
                     ) Ubicacion(lat, lon, hora, precision) else null
                 }
+                "PEDIR_UBICACION" -> if (campos.size == 1) PedirUbicacion else null
                 "DECIR" -> if (campos.size >= 2) Decir(campos[1]) else null
                 "NOTIF" -> if (campos.size >= 4) Notif(campos[1], campos[2], campos[3]) else null
                 "CANCION" -> {

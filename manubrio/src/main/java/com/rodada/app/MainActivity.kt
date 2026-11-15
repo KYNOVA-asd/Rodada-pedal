@@ -45,6 +45,7 @@ class MainActivity : Activity() {
     private var wasConnected = false
     private lateinit var linkStatus: TextView
     private var enlace: EnlaceCliente? = null
+    private var rodadaVisible = false
     private var afterBluetoothPermission: (() -> Unit)? = null
     private lateinit var notice: LinearLayout
     /** Últimas notificaciones, la más nueva primero. Solo en memoria; nunca en disco. */
@@ -173,6 +174,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        rodadaVisible = true
         handler.removeCallbacks(updateScreen)
         updateScreen.run()
         // Al volver de Ajustes con el acceso recién concedido.
@@ -182,6 +184,7 @@ class MainActivity : Activity() {
     }
 
     override fun onPause() {
+        rodadaVisible = false
         handler.removeCallbacks(updateScreen)
         // Pantalla apagada o app en segundo plano: la franja deja de animar.
         ticker.pausar()
@@ -601,6 +604,7 @@ class MainActivity : Activity() {
                     findingMotorola = false
                 }
                 is Mensaje.LlamadaFin -> endCall(mensaje.id)
+                Mensaje.PedirUbicacion -> UbicacionS40.solicitar(this, rodadaVisible)
                 is Mensaje.Hola, is Mensaje.Decir, is Mensaje.Responder, is Mensaje.Ubicacion -> Unit
             }
         }

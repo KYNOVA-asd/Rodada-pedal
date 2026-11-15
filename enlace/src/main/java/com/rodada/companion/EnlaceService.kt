@@ -171,6 +171,9 @@ class EnlaceService : Service() {
     /** Botón "Buscar S40" de la pantalla: false si no hay enlace. */
     fun buscarS40(): Boolean = enviar(Mensaje.Buscar)
 
+    /** Solicita una lectura puntual; el S40 responde cuando tiene un fix válido. */
+    fun solicitarUbicacion(): Boolean = enviar(Mensaje.PedirUbicacion)
+
     private fun recibir(mensaje: Mensaje) {
         Log.d(TAG, "recibido $mensaje")
         when (mensaje) {
@@ -179,7 +182,7 @@ class EnlaceService : Service() {
             Mensaje.Buscar -> sonarTimbre()
             Mensaje.BuscarFin -> timbre.detener()
             is Mensaje.Responder -> AvisosService.actual?.responderLlamada(mensaje.id, mensaje.accion)
-            is Mensaje.Hola, is Mensaje.Notif, is Mensaje.Cancion, is Mensaje.Nav, Mensaje.NavFin, is Mensaje.Llamada, is Mensaje.LlamadaFin, is Mensaje.LlamadaEnCurso -> Unit
+            is Mensaje.Hola, is Mensaje.Notif, is Mensaje.Cancion, is Mensaje.Nav, Mensaje.NavFin, is Mensaje.Llamada, is Mensaje.LlamadaFin, is Mensaje.LlamadaEnCurso, Mensaje.PedirUbicacion -> Unit
         }
     }
 
