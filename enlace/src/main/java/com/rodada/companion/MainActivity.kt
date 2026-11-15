@@ -64,6 +64,19 @@ class MainActivity : Activity() {
             val enviado = EnlaceService.actual?.buscarS40() ?: false
             Toast.makeText(this, if (enviado) R.string.find_sent else R.string.find_no_link, Toast.LENGTH_SHORT).show()
         }
+        findViewById<Button>(R.id.fall_banner).setOnClickListener { EnlaceService.actual?.estoyBien(avisarS40 = true) }
+        findViewById<Button>(R.id.fall_contact).setOnClickListener {
+            startActivityForResult(
+                Intent(Intent.ACTION_PICK, android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI),
+                ELEGIR_CONTACTO
+            )
+        }
+        findViewById<Button>(R.id.fall_test).setOnClickListener {
+            val servicio = EnlaceService.actual
+            if (servicio == null) Toast.makeText(this, R.string.fall_need_link, Toast.LENGTH_SHORT).show()
+            else servicio.iniciarAlarmaCaida(prueba = true)
+        }
+        findViewById<Button>(R.id.fall_sms_test).setOnClickListener { confirmarSmsPrueba() }
         findViewById<Button>(R.id.show_s40_location).setOnClickListener {
             startActivity(Intent(this, UbicacionActivity::class.java))
         }
@@ -83,11 +96,51 @@ class MainActivity : Activity() {
         prepararBuscando()
     }
 
-    /** Abierta por "te están buscando": se ve encima del bloqueo y enciende la pantalla. */
+    /** Abierta por "te están buscando" o por la alarma de caída: encima del bloqueo. */
     private fun prepararBuscando() {
         val buscando = intent?.getBooleanExtra(EXTRA_BUSCANDO, false) == true && EnlaceEstado.buscando
-        setShowWhenLocked(buscando)
-        setTurnScreenOn(buscando)
+        val caida = intent?.getBooleanExtra(EXTRA_CAIDA, false) == true && EnlaceEstado.caida
+        setShowWhenLocked(buscando || caida)
+        setTurnScreenOn(buscando || caida)
+    }
+
+    private fun mostrarCaida(caida: Boolean) {
+        findViewById<Button>(R.id.fall_banner).visibility = if (caida) android.view.View.VISIBLE else android.view.View.GONE
+        if (!caida && !EnlaceEstado.buscando) {
+            setShowWhenLocked(false)
+            setTurnScreenOn(false)
+        }
+    }
+
+    private fun mostrarContacto() {
+        val ajustes = Ajustes(this)
+        val nombre = ajustes.contactoNombre ?: ajustes.contactoNumero
+        findViewById<Button>(R.id.fall_contact).text =
+            if (nombre == null) getString(R.string.fall_contact_none) else getString(R.string.fall_contact, nombre)
+    }
+
+    private fun permisosCaida(): Array<String> = arrayOf(Manifest.permission.SEND_SMS, Manifest.permission.CALL_PHONE)
+
+    private fun confirmarSmsPrueba() {
+        val ajustes = Ajustes(this)
+        val nombre = ajustes.contactoNombre ?: ajustes.contactoNumero
+        if (nombre == null) {
+            Toast.makeText(this, R.string.fall_contact_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (permisosCaida().any { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) {
+            requestPermissions(permisosCaida(), PERMISOS_CAIDA)
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.fall_sms_test_button)
+            .setMessage(getString(R.string.fall_sms_test_confirm, nombre))
+            .setPositiveButton(R.string.fall_sms_test_send) { _, _ ->
+                val ok = EnlaceService.actual?.smsDePrueba() ?: false
+                Toast.makeText(this, if (ok) R.string.fall_sms_test_ok else R.string.fall_sms_test_failed, Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton(R.string.permissions_cancel, null)
+            .show()
     }
 
     private fun mostrarBuscando(buscando: Boolean) {
@@ -102,6 +155,9 @@ class MainActivity : Activity() {
         super.onResume()
         EnlaceEstado.oyenteBuscando = ::mostrarBuscando
         mostrarBuscando(EnlaceEstado.buscando)
+        EnlaceEstado.oyenteCaida = ::mostrarCaida
+        mostrarCaida(EnlaceEstado.caida)
+        mostrarContacto()
         EnlaceEstado.oyente = ::mostrar
         mostrar(EnlaceEstado.estado)
         val permitido = getSystemService(NotificationManager::class.java)
@@ -117,6 +173,7 @@ class MainActivity : Activity() {
     override fun onPause() {
         bridgeHandler.removeCallbacks(refreshBridge)
         EnlaceEstado.oyenteBuscando = null
+        EnlaceEstado.oyenteCaida = null
         EnlaceEstado.oyente = null
         super.onPause()
     }
@@ -156,6 +213,12 @@ class MainActivity : Activity() {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) requestProjection()
             return
         }
+        if (requestCode == PERMISOS_CAIDA) {
+            if (permisosCaida().any { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) {
+                Toast.makeText(this, R.string.fall_permissions_needed, Toast.LENGTH_LONG).show()
+            }
+            return
+        }
         if (requestCode != PERMISOS) return
         if (tienePermisos()) activar() else Toast.makeText(this, R.string.permissions_needed, Toast.LENGTH_LONG).show()
     }
@@ -181,10 +244,32 @@ class MainActivity : Activity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == ELEGIR_CONTACTO) {
+            guardarContacto(data?.data)
+            return
+        }
         if (requestCode != AUDIO_PROJECTION || resultCode != RESULT_OK || data == null) return
         startForegroundService(Intent(this, AudioBridgeService::class.java)
             .putExtra(AudioBridgeService.EXTRA_RESULT_CODE, resultCode)
             .putExtra(AudioBridgeService.EXTRA_TOKEN, data))
+    }
+
+    /** Lee nombre y número del contacto elegido (permiso temporal del selector). */
+    private fun guardarContacto(uri: android.net.Uri?) {
+        if (uri == null) return
+        val telefono = android.provider.ContactsContract.CommonDataKinds.Phone.NUMBER
+        val nombre = android.provider.ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME
+        contentResolver.query(uri, arrayOf(telefono, nombre), null, null, null)?.use { c ->
+            if (!c.moveToFirst()) return
+            val ajustes = Ajustes(this)
+            ajustes.contactoNumero = c.getString(0)
+            ajustes.contactoNombre = c.getString(1)
+        }
+        mostrarContacto()
+        // Sin estos permisos la alarma suena pero no puede avisar.
+        if (permisosCaida().any { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) {
+            requestPermissions(permisosCaida(), PERMISOS_CAIDA)
+        }
     }
 
     private fun showBridgeState() {
@@ -203,6 +288,9 @@ class MainActivity : Activity() {
 
     companion object {
         const val EXTRA_BUSCANDO = "buscando"
+        const val EXTRA_CAIDA = "caida"
+        private const val PERMISOS_CAIDA = 4
+        private const val ELEGIR_CONTACTO = 5
         private const val PERMISOS = 1
         private const val AUDIO_PERMISSION = 2
         private const val AUDIO_PROJECTION = 3

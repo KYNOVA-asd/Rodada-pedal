@@ -44,6 +44,16 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="@string/mode_dim_label"
+            android:textColor="#C9D2D1"
+            android:textSize="13sp" />
+
+        <TextView android:id="@+id/mode_dim" style="@style/ModeChoice" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:layout_marginTop="14dp"
             android:text="@string/mode_odometer_label"
             android:textColor="#C9D2D1"
@@ -78,6 +88,27 @@
                 android:textSize="12sp"
                 android:textStyle="bold" />
         </LinearLayout>
+
+        <TextView
+            android:id="@+id/mode_ride_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="14dp"
+            android:textColor="#C9D2D1"
+            android:textSize="13sp" />
+
+        <TextView
+            android:id="@+id/mode_ride"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/info_panel_day"
+            android:gravity="center"
+            android:lineSpacingExtra="4dp"
+            android:padding="8dp"
+            android:textColor="@color/lcd_day_ink"
+            android:textSize="17sp"
+            android:textStyle="bold" />
 
         <TextView android:id="@+id/mode_find" style="@style/ModeChoice"
             android:layout_marginTop="14dp" />

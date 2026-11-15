@@ -61,13 +61,26 @@ import java.util.UUID
  * - PEDIR_UBICACION           Motorola → S40: solicita un punto reciente;
  *                              lectura GPS única solo si Rodada está visible
  *                              o ya hay recorrido activo (versión 10).
+ * - RECORRIDO\tactivo          S40 → Motorola: 1 al iniciar el recorrido, 0 al
+ *                              terminar, y el estado actual al conectar. Mientras
+ *                              es 1 el Motorola vigila caídas (versión 12).
+ * - FRENON                     S40 → Motorola: el GPS pasó de rápido a 0 de golpe
+ *                              (versión 12).
+ * - CAIDA\tsegundos\tprueba    Motorola → S40: posible caída; suena la alarma esos
+ *                              segundos antes de avisar al contacto. prueba = 1 si
+ *                              es la prueba y no se avisará a nadie (versión 12).
+ * - CAIDA_OK                   Ambos lados: "ESTOY BIEN", se cancela (versión 12).
+ * - CAIDA_AYUDA                S40 → Motorola: "necesito ayuda", avisar ya sin
+ *                              esperar la cuenta (versión 12).
+ * - CAIDA_AVISO\tenviado        Motorola → S40: terminó la cuenta; enviado = 1 si
+ *                              se mandó el SMS y la llamada (versión 12).
  *
  * Privacidad: el contenido de NOTIF, DECIR y NAV no se guarda en disco ni en logs.
  */
 object Enlace {
     val UUID: UUID = java.util.UUID.fromString("6f1c2a4e-8d3b-4c55-9a1e-52d0a7c3e901")
     const val NOMBRE_SERVICIO = "Rodada Enlace"
-    const val VERSION = 11
+    const val VERSION = 12
     const val MAX_LINEA = 2048
     const val MAX_APP = 40
     const val MAX_TITULO = 80
@@ -99,6 +112,12 @@ sealed class Mensaje {
     ) : Mensaje()
     object Buscar : Mensaje()
     object BuscarFin : Mensaje()
+    data class Recorrido(val activo: Boolean) : Mensaje()
+    object Frenon : Mensaje()
+    data class Caida(val segundos: Int, val prueba: Boolean) : Mensaje()
+    object CaidaOk : Mensaje()
+    object CaidaAyuda : Mensaje()
+    data class CaidaAviso(val enviado: Boolean) : Mensaje()
     data class Responder(val id: String, val accion: Accion) : Mensaje() {
         enum class Accion { CONTESTAR, RECHAZAR, COLGAR, ALTAVOZ, SILENCIAR }
     }
@@ -120,6 +139,12 @@ sealed class Mensaje {
             is Responder -> listOf("RESPONDER", id, accion.name)
             Buscar -> listOf("BUSCAR")
             BuscarFin -> listOf("BUSCAR_FIN")
+            is Recorrido -> listOf("RECORRIDO", if (activo) "1" else "0")
+            Frenon -> listOf("FRENON")
+            is Caida -> listOf("CAIDA", segundos.toString(), if (prueba) "1" else "0")
+            CaidaOk -> listOf("CAIDA_OK")
+            CaidaAyuda -> listOf("CAIDA_AYUDA")
+            is CaidaAviso -> listOf("CAIDA_AVISO", if (enviado) "1" else "0")
         }
         return campos.joinToString("\t") { escapar(it) } + "\n"
     }
@@ -160,6 +185,15 @@ sealed class Mensaje {
                 "LLAMADA_FIN" -> if (campos.size >= 2) LlamadaFin(campos[1]) else null
                 "BUSCAR" -> Buscar
                 "BUSCAR_FIN" -> BuscarFin
+                "RECORRIDO" -> if (campos.size >= 2) Recorrido(campos[1] == "1") else null
+                "FRENON" -> Frenon
+                "CAIDA" -> {
+                    val segundos = campos.getOrNull(1)?.toIntOrNull()
+                    if (segundos != null && segundos in 1..600) Caida(segundos, campos.getOrNull(2) == "1") else null
+                }
+                "CAIDA_OK" -> CaidaOk
+                "CAIDA_AYUDA" -> CaidaAyuda
+                "CAIDA_AVISO" -> if (campos.size >= 2) CaidaAviso(campos[1] == "1") else null
                 "LLAMADA_CURSO" -> if (campos.size >= 5) {
                     LlamadaEnCurso(campos[1], campos[2], campos[3], campos[4] == "1", campos.getOrElse(5) { "0" } == "1")
                 } else null

@@ -32,9 +32,9 @@ class Timbre(context: Context) {
 
     private val pararSolo = Runnable { detener() }
 
-    fun sonar() {
+    fun sonar(duracionMs: Long = DURACION_MS) {
         principal.removeCallbacks(pararSolo)
-        principal.postDelayed(pararSolo, DURACION_MS)
+        principal.postDelayed(pararSolo, duracionMs)
         if (tono != null) return
         volumenAnterior = audio.getStreamVolume(AudioManager.STREAM_ALARM)
         try {

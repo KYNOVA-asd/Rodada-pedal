@@ -143,6 +143,8 @@ class EnlaceCliente(
         nuevo.iniciar()
         nuevo.enviar(Mensaje.Hola(Enlace.VERSION, "S40"))
         UbicacionS40.leer(appContext)?.let { nuevo.enviar(it) }
+        // El Motorola vigila caídas solo durante un recorrido.
+        nuevo.enviar(Mensaje.Recorrido(RideState.running))
         Log.d(TAG, "enlace conectado")
         cambiar(Estado.CONECTADO)
     }
@@ -167,6 +169,10 @@ class EnlaceCliente(
 
         fun enviarUbicacion(punto: Mensaje.Ubicacion): Boolean =
             actual?.takeIf { it.conectado }?.enviar(punto) == true
+
+        /** Para el servicio del recorrido: manda si hay enlace, si no lo ignora. */
+        fun enviarSiConectado(mensaje: Mensaje): Boolean =
+            actual?.takeIf { it.conectado }?.enviar(mensaje) == true
         /** Pocos reintentos y luego silencio hasta que el Motorola reaparezca. */
         private val ESPERAS_MS = longArrayOf(3_000L, 10_000L, 30_000L, 60_000L)
     }

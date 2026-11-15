@@ -21,7 +21,18 @@ class Ajustes(context: Context) {
         get() = prefs.getBoolean(KEY_ACTIVO, false)
         set(value) = prefs.edit().putBoolean(KEY_ACTIVO, value).apply()
 
+    /** Contacto de emergencia para caídas (lo elige el usuario en la pantalla). */
+    var contactoNombre: String?
+        get() = prefs.getString(KEY_CONTACTO_NOMBRE, null)
+        set(value) = prefs.edit().putString(KEY_CONTACTO_NOMBRE, value).apply()
+
+    var contactoNumero: String?
+        get() = prefs.getString(KEY_CONTACTO_NUMERO, null)
+        set(value) = prefs.edit().putString(KEY_CONTACTO_NUMERO, value).apply()
+
     companion object {
+        private const val KEY_CONTACTO_NOMBRE = "contacto_nombre"
+        private const val KEY_CONTACTO_NUMERO = "contacto_numero"
         private const val KEY_ACTIVO = "enlace_activo"
         private const val KEY_APPS = "apps_reenviadas"
         private const val KEY_LEER = "leer_titulo"

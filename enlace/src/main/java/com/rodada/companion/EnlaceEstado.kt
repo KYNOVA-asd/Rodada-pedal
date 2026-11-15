@@ -25,4 +25,13 @@ object EnlaceEstado {
         }
 
     var oyenteBuscando: ((Boolean) -> Unit)? = null
+
+    /** Suena la alarma de posible caída (esperando "ESTOY BIEN"). */
+    var caida = false
+        set(value) {
+            field = value
+            oyenteCaida?.invoke(value)
+        }
+
+    var oyenteCaida: ((Boolean) -> Unit)? = null
 }

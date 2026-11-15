@@ -82,6 +82,10 @@ class MainActivity : Activity() {
         window.setDecorFitsSystemWindows(false)
         hideSystemBars()
         setContentView(R.layout.activity_main)
+        // En el manubrio no se suspende mientras Rodada está a la vista, con o sin
+        // recorrido y sin cargador; el brillo ya baja solo al minuto. El botón de
+        // encendido la sigue apagando, y al salir de Rodada vuelve la suspensión normal.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         applyOrientation(resources.configuration)
         speed = findViewById(R.id.speed)
         speedUnit = findViewById(R.id.speed_unit)
@@ -200,6 +204,7 @@ class MainActivity : Activity() {
         localMusic?.detener()
         if (currentCall != null) vibrator.cancel()
         finder.detener()
+        fallAlarm.detener()
         super.onDestroy()
     }
 
@@ -271,11 +276,6 @@ class MainActivity : Activity() {
         updateNavSummary()
         val seconds = (SystemClock.elapsedRealtime() - sessionStartedAtMs) / 1000L
         elapsed.text = getString(R.string.elapsed_value, seconds / 3600, (seconds / 60) % 60, seconds % 60)
-        if (RideState.running) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        }
     }
 
     private fun startAudioReceiver() {
@@ -320,6 +320,15 @@ class MainActivity : Activity() {
     }
 
     private fun handleMusicControl(zone: MusicWheelView.Zone) {
+        // Alarma de caída: derecha (verde) = estoy bien, izquierda (roja) = necesito ayuda.
+        if (fallAlarm.sonando) {
+            when (zone) {
+                MusicWheelView.Zone.NEXT -> stopFall(tellMotorola = true)
+                MusicWheelView.Zone.PREVIOUS -> askForHelp()
+                else -> Unit
+            }
+            return
+        }
         // Llamada sonando: derecha contesta, izquierda rechaza, centro calla la vibración.
         // Llamada en curso: izquierda cuelga, centro altavoz, derecha silenciar. + y − son volumen.
         if (currentCall != null) {
@@ -420,9 +429,44 @@ class MainActivity : Activity() {
             prefs.edit().putString(KEY_VOICE, TARGET_MOTOROLA).apply()
             withBluetoothPermission { startLinkIfPossible() }
         }
+        content.findViewById<TextView>(R.id.mode_dim).apply {
+            text = getString(R.string.mode_dim_value, dimLabel(brightMs()))
+            // Cada toque pasa a la siguiente opción; se aplica en el momento.
+            setOnClickListener {
+                val next = DIM_OPTIONS_MS[(DIM_OPTIONS_MS.indexOf(brightMs()) + 1) % DIM_OPTIONS_MS.size]
+                prefs.edit().putLong(KEY_DIM_MS, next).apply()
+                text = getString(R.string.mode_dim_value, dimLabel(next))
+                wakeScreen()
+            }
+        }
         OdometerStore(this).use { store ->
             content.findViewById<TextView>(R.id.mode_odometer).text =
                 getString(R.string.mode_odometer_value, store.totalMeters() / 1000.0)
+            // Recorrido en curso (en vivo) o el último guardado, más el récord.
+            val ride = if (RideState.running) {
+                OdometerStore.Ride(
+                    RideState.elapsedSeconds(), RideState.distanceMeters.toDouble(),
+                    RideState.maxKmh, RideState.minMovingKmh, RideState.stoppedMs / 1000L
+                )
+            } else {
+                store.lastRide()
+            }
+            content.findViewById<TextView>(R.id.mode_ride_label).setText(
+                if (RideState.running) R.string.mode_ride_now else R.string.mode_ride_last
+            )
+            val record = maxOf(store.recordMaxKmh(), if (RideState.running) RideState.maxKmh else 0f)
+            content.findViewById<TextView>(R.id.mode_ride).text = if (ride == null) {
+                getString(R.string.mode_ride_none)
+            } else {
+                getString(
+                    R.string.mode_ride_value,
+                    ride.maxKmh.toInt(),
+                    if (ride.minKmh < 0f) "-" else ride.minKmh.toInt().toString(),
+                    ride.averageKmh.toInt(),
+                    ride.stoppedSeconds / 60, ride.stoppedSeconds % 60,
+                    record.toInt()
+                )
+            }
         }
         content.findViewById<TextView>(R.id.mode_reset).setOnClickListener {
             if (RideState.running) {
@@ -609,7 +653,11 @@ class MainActivity : Activity() {
                 }
                 is Mensaje.LlamadaFin -> endCall(mensaje.id)
                 Mensaje.PedirUbicacion -> UbicacionS40.solicitar(this, rodadaVisible)
-                is Mensaje.Hola, is Mensaje.Decir, is Mensaje.Responder, is Mensaje.Ubicacion -> Unit
+                is Mensaje.Caida -> ringFall(mensaje)
+                Mensaje.CaidaOk -> stopFall(tellMotorola = false)
+                is Mensaje.CaidaAviso -> fallFinished(mensaje)
+                is Mensaje.Hola, is Mensaje.Decir, is Mensaje.Responder, is Mensaje.Ubicacion,
+                is Mensaje.Recorrido, Mensaje.Frenon, Mensaje.CaidaAyuda -> Unit
             }
         }
         enlace = link
@@ -719,6 +767,66 @@ class MainActivity : Activity() {
             findViewById<LedTextView>(R.id.notice_text).setText(R.string.find_touch_to_stop)
             showPage(Page.NOTICES)
         }
+        wakeScreen()
+    }
+
+    /** Alarma de posible caída (la decide el Motorola). Cualquier toque = "ESTOY BIEN". */
+    private val fallAlarm by lazy { Timbre(this) }
+    private var fallWakeLock: android.os.PowerManager.WakeLock? = null
+
+    private fun ringFall(fall: Mensaje.Caida) {
+        fallAlarm.sonar(fall.segundos * 1000L)
+        if (fallWakeLock == null) {
+            @Suppress("DEPRECATION")
+            fallWakeLock = getSystemService(android.os.PowerManager::class.java).newWakeLock(
+                android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "Rodada:caida"
+            ).apply { acquire(fall.segundos * 1000L + 5_000L) }
+        }
+        findViewById<LedTextView>(R.id.notice_app).text = if (fall.prueba) getString(R.string.fall_test) else ""
+        findViewById<LedTextView>(R.id.notice_title).setText(R.string.fall_title)
+        findViewById<LedTextView>(R.id.notice_text).setText(R.string.fall_touch)
+        findViewById<MusicWheelView>(R.id.music_wheel).callMode = MusicWheelView.CallMode.RINGING
+        showPage(Page.NOTICES)
+        wakeScreen()
+    }
+
+    /** Botón rojo: avisar ya al contacto, sin esperar la cuenta. */
+    private fun askForHelp() {
+        if (enlace?.enviar(Mensaje.CaidaAyuda) != true) {
+            Toast.makeText(this, R.string.motorola_not_connected, Toast.LENGTH_SHORT).show()
+            return
+        }
+        findViewById<LedTextView>(R.id.notice_text).setText(R.string.fall_helping)
+    }
+
+    /** La rueda vuelve a música, o a los botones de la llamada si hay una. */
+    private fun restoreWheel() {
+        findViewById<MusicWheelView>(R.id.music_wheel).callMode = when {
+            currentCall == null -> MusicWheelView.CallMode.NONE
+            callActive -> MusicWheelView.CallMode.ACTIVE
+            else -> MusicWheelView.CallMode.RINGING
+        }
+    }
+
+    private fun stopFall(tellMotorola: Boolean) {
+        val wasRinging = fallAlarm.sonando
+        fallAlarm.detener()
+        fallWakeLock?.let { if (it.isHeld) it.release() }
+        fallWakeLock = null
+        restoreWheel()
+        if (tellMotorola && wasRinging) enlace?.enviar(Mensaje.CaidaOk)
+        if (wasRinging && page == Page.NOTICES && currentCall == null) showPage(Page.CENTER)
+    }
+
+    private fun fallFinished(result: Mensaje.CaidaAviso) {
+        stopFall(tellMotorola = false)
+        findViewById<LedTextView>(R.id.notice_app).text = ""
+        findViewById<LedTextView>(R.id.notice_title).setText(
+            if (result.enviado) R.string.fall_sent else R.string.fall_not_sent
+        )
+        findViewById<LedTextView>(R.id.notice_text).text = ""
+        showPage(Page.NOTICES)
         wakeScreen()
     }
 
@@ -892,7 +1000,18 @@ class MainActivity : Activity() {
     private fun wakeScreen() {
         setBrightness(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL)
         handler.removeCallbacks(dimScreen)
-        handler.postDelayed(dimScreen, BRIGHT_MS)
+        val ms = brightMs()
+        if (ms > 0L) handler.postDelayed(dimScreen, ms)
+    }
+
+    /** Tiempo sin tocar antes de bajar el brillo (MODE); 0 = nunca. */
+    private fun brightMs(): Long =
+        prefs.getLong(KEY_DIM_MS, DEFAULT_BRIGHT_MS).takeIf { it in DIM_OPTIONS_MS } ?: DEFAULT_BRIGHT_MS
+
+    private fun dimLabel(ms: Long): String = when {
+        ms == 0L -> getString(R.string.mode_dim_never)
+        ms < 60_000L -> getString(R.string.mode_dim_seconds, ms / 1000)
+        else -> getString(R.string.mode_dim_minutes, ms / 60_000)
     }
 
     private fun setBrightness(value: Float) {
@@ -1165,7 +1284,9 @@ class MainActivity : Activity() {
         private const val KEY_VOICE = "voz_en"
         private const val NOTICE_MS = 20_000L
         private const val MAPS_PACKAGE = "com.google.android.apps.maps"
-        private const val BRIGHT_MS = 10_000L
+        private const val DEFAULT_BRIGHT_MS = 60_000L
+        private val DIM_OPTIONS_MS = listOf(10_000L, 30_000L, 60_000L, 120_000L, 300_000L, 0L)
+        private const val KEY_DIM_MS = "bajar_brillo_ms"
         private const val DIM_BRIGHTNESS = 0.06f
         private const val MAX_NOTICES = 5
         private const val SWIPE_MIN_PX = 60

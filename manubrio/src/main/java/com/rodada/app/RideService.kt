@@ -23,6 +23,11 @@ class RideService : Service(), LocationListener {
     private lateinit var odometer: OdometerStore
     private var pendingMeters = 0.0
     private var lastSaveMs = 0L
+    /** Hora de la última lectura buena, para sumar el tiempo detenido. */
+    private var lastFixMs = 0L
+    /** Velocidades de los últimos segundos, para detectar un frenón (posible caída). */
+    private val recentSpeeds = ArrayDeque<Pair<Long, Float>>()
+    private var lastBrakeMs = 0L
 
     override fun onCreate() {
         super.onCreate()
@@ -47,6 +52,7 @@ class RideService : Service(), LocationListener {
             )
             RideState.begin()
             Satelites.empezar(locationManager, QUIEN)
+            EnlaceCliente.enviarSiConectado(com.rodada.enlace.Mensaje.Recorrido(true))
             locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
                 1000L,
@@ -76,6 +82,19 @@ class RideService : Service(), LocationListener {
         UbicacionS40.actualizar(this, location)
         val speedKmh = if (location.hasSpeed()) location.speed * 3.6f else 0f
         RideState.speedKmh = if (speedKmh >= MIN_SPEED_KMH) speedKmh else 0f
+        val now = SystemClock.elapsedRealtime()
+        if (lastFixMs > 0L && RideState.speedKmh == 0f) {
+            // Tope por si el GPS se perdió un rato: no cuenta un hueco largo como detenido.
+            RideState.stoppedMs += (now - lastFixMs).coerceAtMost(MAX_STOP_STEP_MS)
+        }
+        lastFixMs = now
+        checkHardBrake(now, speedKmh)
+        if (RideState.speedKmh > 0f) {
+            if (RideState.speedKmh > RideState.maxKmh) RideState.maxKmh = RideState.speedKmh
+            if (RideState.minMovingKmh < 0f || RideState.speedKmh < RideState.minMovingKmh) {
+                RideState.minMovingKmh = RideState.speedKmh
+            }
+        }
 
         if (RideState.speedKmh == 0f) {
             lastAcceptedLocation = location
@@ -101,6 +120,21 @@ class RideService : Service(), LocationListener {
         }
     }
 
+    /**
+     * Frenón: en los últimos segundos iba a [BRAKE_FROM_KMH] o más y ahora va casi
+     * parado. Solo avisa al Motorola; él decide si fue caída (golpe + quietud).
+     */
+    private fun checkHardBrake(now: Long, rawKmh: Float) {
+        while (recentSpeeds.isNotEmpty() && now - recentSpeeds.first().first > BRAKE_WINDOW_MS) recentSpeeds.removeFirst()
+        val wasFast = recentSpeeds.any { it.second >= BRAKE_FROM_KMH }
+        recentSpeeds.addLast(now to rawKmh)
+        if (wasFast && rawKmh < BRAKE_TO_KMH && now - lastBrakeMs > BRAKE_REPEAT_MS) {
+            lastBrakeMs = now
+            recentSpeeds.clear()
+            EnlaceCliente.enviarSiConectado(com.rodada.enlace.Mensaje.Frenon)
+        }
+    }
+
     override fun onProviderDisabled(provider: String) {
         RideState.hasFix = false
         RideState.speedKmh = 0f
@@ -110,8 +144,15 @@ class RideService : Service(), LocationListener {
     override fun onDestroy() {
         locationManager.removeUpdates(this)
         Satelites.terminar(QUIEN)
+        EnlaceCliente.enviarSiConectado(com.rodada.enlace.Mensaje.Recorrido(false))
         lastGoodLocation?.let { UbicacionS40.actualizar(this, it, forzar = true) }
         saveDistance()
+        if (RideState.running && lastFixMs > 0L) {
+            odometer.saveRide(
+                RideState.elapsedSeconds(), RideState.distanceMeters.toDouble(),
+                RideState.maxKmh, RideState.minMovingKmh, RideState.stoppedMs / 1000L
+            )
+        }
         odometer.close()
         RideState.finish()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -157,6 +198,11 @@ class RideService : Service(), LocationListener {
         private const val CHANNEL_ID = "rodada_recorrido"
         private const val NOTIFICATION_ID = 1
         private const val MAX_ACCURACY_METERS = 25f
+        private const val MAX_STOP_STEP_MS = 5_000L
+        private const val BRAKE_WINDOW_MS = 4_000L
+        private const val BRAKE_FROM_KMH = 15f
+        private const val BRAKE_TO_KMH = 3f
+        private const val BRAKE_REPEAT_MS = 15_000L
         private const val QUIEN = "recorrido"
         private const val MIN_SPEED_KMH = 2f
         private const val MIN_DISTANCE_STEP_METERS = 3f

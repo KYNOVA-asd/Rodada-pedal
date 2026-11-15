@@ -37,6 +37,11 @@ class EnlaceService : Service() {
     private lateinit var musica: SesionMusica
     /** Suena cuando el S40 busca este teléfono. */
     private lateinit var timbre: Timbre
+    /** Caídas: detector (solo durante el recorrido) y su alarma. */
+    private lateinit var detector: DetectorCaidas
+    private lateinit var alarmaCaida: Timbre
+    private var caidaPrueba = false
+    private val terminarCuenta = Runnable { avisarContacto() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -50,6 +55,13 @@ class EnlaceService : Service() {
             getSystemService(NotificationManager::class.java).cancel(ID_BUSCAR)
             canal?.enviar(Mensaje.BuscarFin)
         }
+        alarmaCaida = Timbre(this)
+        detector = DetectorCaidas(this) { iniciarAlarmaCaida(prueba = false) }
+        getSystemService(NotificationManager::class.java).createNotificationChannel(
+            NotificationChannel(CANAL_CAIDA, getString(R.string.fall_channel), NotificationManager.IMPORTANCE_HIGH).apply {
+                setSound(null, null)
+            }
+        )
         musica = SesionMusica(this, android.content.ComponentName(this, AvisosService::class.java)) { cancion ->
             canal?.enviar(cancion)
         }
@@ -67,6 +79,10 @@ class EnlaceService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACCION_PARAR_TIMBRE) {
             timbre.detener()
+            return START_STICKY
+        }
+        if (intent?.action == ACCION_ESTOY_BIEN) {
+            estoyBien(avisarS40 = true)
             return START_STICKY
         }
         startForeground(ID_NOTIFICACION, notificacion(getString(R.string.state_waiting)),
@@ -112,6 +128,8 @@ class EnlaceService : Service() {
         nuevo = CanalEnlace(socket, ::recibir) {
             if (canal === nuevo) {
                 canal = null
+                // Sin S40 no llegan frenones: no tiene caso gastar batería vigilando.
+                detector.desarmar()
                 if (activo) ponerEstado(EnlaceEstado.Estado.Esperando)
             }
         }
@@ -182,8 +200,129 @@ class EnlaceService : Service() {
             Mensaje.Buscar -> sonarTimbre()
             Mensaje.BuscarFin -> timbre.detener()
             is Mensaje.Responder -> AvisosService.actual?.responderLlamada(mensaje.id, mensaje.accion)
-            is Mensaje.Hola, is Mensaje.Notif, is Mensaje.Cancion, is Mensaje.Nav, Mensaje.NavFin, is Mensaje.Llamada, is Mensaje.LlamadaFin, is Mensaje.LlamadaEnCurso, Mensaje.PedirUbicacion -> Unit
+            is Mensaje.Recorrido -> if (mensaje.activo) detector.armar() else detector.desarmar()
+            Mensaje.Frenon -> detector.frenon()
+            Mensaje.CaidaOk -> estoyBien(avisarS40 = false)
+            Mensaje.CaidaAyuda -> if (EnlaceEstado.caida) {
+                principal.removeCallbacks(terminarCuenta)
+                avisarContacto()
+            }
+            is Mensaje.Hola, is Mensaje.Notif, is Mensaje.Cancion, is Mensaje.Nav, Mensaje.NavFin, is Mensaje.Llamada, is Mensaje.LlamadaFin, is Mensaje.LlamadaEnCurso, Mensaje.PedirUbicacion,
+            is Mensaje.Caida, is Mensaje.CaidaAviso -> Unit
         }
+    }
+
+    /** Posible caída: alarma en los dos teléfonos y cuenta regresiva para avisar. */
+    fun iniciarAlarmaCaida(prueba: Boolean) {
+        if (EnlaceEstado.caida) return
+        caidaPrueba = prueba
+        EnlaceEstado.caida = true
+        alarmaCaida.sonar(DURACION_CAIDA_MS + 2_000L)
+        val bien = PendingIntent.getService(
+            this, 3, Intent(this, EnlaceService::class.java).setAction(ACCION_ESTOY_BIEN),
+            PendingIntent.FLAG_IMMUTABLE
+        )
+        val pantalla = PendingIntent.getActivity(
+            this, 4,
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_CAIDA, true)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+        val aviso = Notification.Builder(this, CANAL_CAIDA)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle(getString(if (prueba) R.string.fall_title_test else R.string.fall_title))
+            .setContentText(getString(R.string.fall_text, DURACION_CAIDA_MS / 1000))
+            .setCategory(Notification.CATEGORY_ALARM)
+            .setContentIntent(pantalla)
+            .setFullScreenIntent(pantalla, true)
+            .addAction(Notification.Action.Builder(null, getString(R.string.fall_ok), bien).build())
+            .setOngoing(true)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(ID_CAIDA, aviso)
+        enviar(Mensaje.Caida((DURACION_CAIDA_MS / 1000).toInt(), prueba))
+        voz.decir(getString(R.string.fall_voice))
+        principal.removeCallbacks(terminarCuenta)
+        principal.postDelayed(terminarCuenta, DURACION_CAIDA_MS)
+    }
+
+    /** "ESTOY BIEN" desde el moto (avisa al S40) o desde el S40. */
+    fun estoyBien(avisarS40: Boolean) {
+        if (!EnlaceEstado.caida) return
+        principal.removeCallbacks(terminarCuenta)
+        alarmaCaida.detener()
+        getSystemService(NotificationManager::class.java).cancel(ID_CAIDA)
+        EnlaceEstado.caida = false
+        if (avisarS40) enviar(Mensaje.CaidaOk)
+    }
+
+    /** Nadie apagó la alarma: SMS con la ubicación y llamada (en la prueba, nada). */
+    private fun avisarContacto() {
+        alarmaCaida.detener()
+        getSystemService(NotificationManager::class.java).cancel(ID_CAIDA)
+        EnlaceEstado.caida = false
+        val ajustes = Ajustes(this)
+        val numero = ajustes.contactoNumero
+        val nombre = ajustes.contactoNombre ?: numero ?: ""
+        if (caidaPrueba || numero == null) {
+            enviar(Mensaje.CaidaAviso(false))
+            avisoFinal(getString(if (numero == null) R.string.fall_no_contact else R.string.fall_test_done, nombre))
+            return
+        }
+        val sms = mandarSms(numero, textoCaida(prueba = false))
+        val llamada = llamar(numero)
+        enviar(Mensaje.CaidaAviso(sms || llamada))
+        avisoFinal(getString(if (sms || llamada) R.string.fall_sent else R.string.fall_failed, nombre))
+    }
+
+    /** Botón "Mandar SMS de prueba": mensaje marcado como PRUEBA, sin llamar. */
+    fun smsDePrueba(): Boolean {
+        val numero = Ajustes(this).contactoNumero ?: return false
+        return mandarSms(numero, textoCaida(prueba = true))
+    }
+
+    private fun textoCaida(prueba: Boolean): String {
+        val punto = UbicacionGuardada.leer(this)
+        val donde = if (punto == null) {
+            getString(R.string.fall_sms_no_location)
+        } else {
+            val minutos = ((System.currentTimeMillis() - punto.horaMs) / 60_000L).coerceAtLeast(0)
+            getString(
+                R.string.fall_sms_location, minutos, punto.precisionMetros.toInt(),
+                "https://maps.google.com/?q=%.6f,%.6f".format(java.util.Locale.US, punto.latitud, punto.longitud)
+            )
+        }
+        return getString(if (prueba) R.string.fall_sms_test else R.string.fall_sms, donde)
+    }
+
+    private fun mandarSms(numero: String, texto: String): Boolean = try {
+        val sms = getSystemService(android.telephony.SmsManager::class.java)
+        sms.sendMultipartTextMessage(numero, null, sms.divideMessage(texto), null, null)
+        Log.d(TAG, "sms enviado")
+        true
+    } catch (e: Exception) {
+        Log.w(TAG, "sms falló: ${e.javaClass.simpleName}")
+        false
+    }
+
+    private fun llamar(numero: String): Boolean = try {
+        // TelecomManager llama sin abrir pantalla, así funciona con el moto bloqueado.
+        getSystemService(android.telecom.TelecomManager::class.java)
+            .placeCall(android.net.Uri.fromParts("tel", numero, null), android.os.Bundle())
+        true
+    } catch (e: Exception) {
+        Log.w(TAG, "llamada falló: ${e.javaClass.simpleName}")
+        false
+    }
+
+    private fun avisoFinal(texto: String) {
+        val aviso = Notification.Builder(this, CANAL_CAIDA)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle(getString(R.string.app_name))
+            .setContentText(texto)
+            .setStyle(Notification.BigTextStyle().bigText(texto))
+            .build()
+        getSystemService(NotificationManager::class.java).notify(ID_CAIDA_FIN, aviso)
     }
 
     private fun ponerEstado(estado: EnlaceEstado.Estado) {
@@ -221,6 +360,10 @@ class EnlaceService : Service() {
         canal = null
         musica.detener()
         timbre.detener()
+        detector.desarmar()
+        principal.removeCallbacks(terminarCuenta)
+        alarmaCaida.detener()
+        EnlaceEstado.caida = false
         voz.cerrar()
         if (EnlaceEstado.estado !is EnlaceEstado.Estado.Error) EnlaceEstado.estado = EnlaceEstado.Estado.Apagado
         super.onDestroy()
@@ -236,5 +379,11 @@ class EnlaceService : Service() {
         private const val ID_BUSCAR = 2
         private const val CANAL_BUSCAR = "buscar"
         private const val ACCION_PARAR_TIMBRE = "com.rodada.companion.PARAR_TIMBRE"
+        private const val ACCION_ESTOY_BIEN = "com.rodada.companion.ESTOY_BIEN"
+        private const val CANAL_CAIDA = "caida"
+        private const val ID_CAIDA = 3
+        private const val ID_CAIDA_FIN = 4
+        /** Tiempo para apagar la alarma antes de avisar (elegido por el usuario). */
+        const val DURACION_CAIDA_MS = 60_000L
     }
 }
