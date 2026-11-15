@@ -39,6 +39,10 @@
             android:name=".AppsActivity"
             android:exported="false"
             android:label="@string/apps_title" />
+        <activity
+            android:name=".UbicacionActivity"
+            android:exported="false"
+            android:label="@string/location_title" />
         <service
             android:name=".AvisosService"
             android:exported="true"

@@ -64,6 +64,9 @@ class MainActivity : Activity() {
             val enviado = EnlaceService.actual?.buscarS40() ?: false
             Toast.makeText(this, if (enviado) R.string.find_sent else R.string.find_no_link, Toast.LENGTH_SHORT).show()
         }
+        findViewById<Button>(R.id.show_s40_location).setOnClickListener {
+            startActivity(Intent(this, UbicacionActivity::class.java))
+        }
         findViewById<Button>(R.id.choose_apps).setOnClickListener {
             startActivity(Intent(this, AppsActivity::class.java))
         }

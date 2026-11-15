@@ -54,6 +54,15 @@
         android:textAllCaps="false"
         android:textSize="18sp" />
 
+    <Button
+        android:id="@+id/show_s40_location"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:layout_marginTop="12dp"
+        android:text="@string/show_s40_location"
+        android:textAllCaps="false"
+        android:textSize="18sp" />
+
     <TextView
         android:id="@+id/listener_state"
         android:layout_width="match_parent"
