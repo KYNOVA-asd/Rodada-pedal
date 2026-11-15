@@ -82,7 +82,8 @@ antes de dar la tarea por terminada.
   y cada dependencia nueva debe justificarse.
 - Batería primero: 1500 mAh. Pide ubicación solo mientras hay un
   recorrido activo y suelta GPS, micrófono y wakelocks al terminar.
-- Todo debe funcionar sin conexión a internet.
+- Todo debe funcionar sin conexión a internet. El clima es un extra:
+  si no hay internet o falla la consulta, lo demás sigue igual.
 - GPS con pantalla apagada: usa un servicio en primer plano con
   notificación persistente.
 - Voz: usa el TextToSpeech del sistema. No incluyas voces ni motores
@@ -195,9 +196,15 @@ Trabaja solo en la fase actual. No adelantes las siguientes.
 
 - Cambios pequeños, un commit por cambio, mensajes en español.
 - No borres ni reescribas archivos que no sean parte de la tarea.
-- No subas al repo claves, keystores ni local.properties.
-- Enlace: nada sale a internet. No guardes el contenido de las
-  notificaciones en disco ni en logs. Sin sondeos constantes.
+- No subas al repo claves, keystores ni local.properties. La clave del
+  clima va en .env (api_clima=...), ignorado por git; enlace la lee al
+  compilar (BuildConfig.API_CLIMA). Nunca la escribas en logs.
+- Enlace: lo único que sale a internet es la consulta del clima a
+  OpenWeatherMap (Clima.kt): al iniciar un recorrido, cada hora mientras
+  dure, o con tres toques en el S40; ubicación redondeada a ~1 km y
+  respuesta reusada si tiene menos de 30 min. Nada más sale a internet.
+  No guardes el contenido de las notificaciones en disco ni en logs.
+  Sin sondeos constantes.
 - Si algo no se puede hacer en Android 13 Go o gasta mucha batería,
   dilo y propone una alternativa en lugar de forzarlo.
 - Si una decisión no está en README.md ni aquí, pregunta.

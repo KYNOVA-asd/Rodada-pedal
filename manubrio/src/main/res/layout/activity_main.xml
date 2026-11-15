@@ -186,6 +186,14 @@
                 android:layout_height="44dp"
                 android:layout_marginTop="10dp" />
         </LinearLayout>
+        <!-- Semáforo de temperatura: verde, amarillo o rojo según el calor del S40. -->
+        <View
+            android:id="@+id/heat_border"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clickable="false"
+            android:focusable="false"
+            android:importantForAccessibility="no" />
     </FrameLayout>
 
     <FrameLayout

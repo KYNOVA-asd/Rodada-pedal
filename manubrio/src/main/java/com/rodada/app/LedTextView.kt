@@ -20,9 +20,15 @@ class LedTextView(context: Context, attrs: AttributeSet?) : View(context, attrs)
     private val encendido = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.lcd_ink) }
     private val apagado = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.lcd_ghost) }
 
-    fun setBacklit(backlit: Boolean) {
-        encendido.color = context.getColor(if (backlit) R.color.lcd_ink else R.color.lcd_day_ink)
-        apagado.color = context.getColor(if (backlit) R.color.lcd_ghost else R.color.lcd_day_ghost)
+    fun setBacklit(backlit: Boolean) = setColors(
+        context.getColor(if (backlit) R.color.lcd_ink else R.color.lcd_day_ink),
+        context.getColor(if (backlit) R.color.lcd_ghost else R.color.lcd_day_ghost)
+    )
+
+    /** Color de los puntos encendidos y de los apagados (modo noche: ámbar). */
+    fun setColors(ink: Int, ghost: Int) {
+        encendido.color = ink
+        apagado.color = ghost
         invalidate()
     }
 

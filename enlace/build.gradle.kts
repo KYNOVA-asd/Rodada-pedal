@@ -16,6 +16,15 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1"
+        // Clave de OpenWeatherMap desde .env (ignorado por git); vacía si no existe.
+        val apiClima = rootProject.file(".env").takeIf { it.exists() }?.readLines()
+            ?.firstOrNull { it.trim().startsWith("api_clima=") }
+            ?.substringAfter("=")?.trim()?.trim('"') ?: ""
+        buildConfigField("String", "API_CLIMA", "\"$apiClima\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
 

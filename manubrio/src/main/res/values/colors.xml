@@ -7,4 +7,16 @@
     <color name="silver_ink">#25292B</color>
     <color name="lcd_day_ink">#26332F</color>
     <color name="lcd_day_ghost">#A8B2A8</color>
+    <!-- Pantallita de noche: LED ámbar sobre negro (no encandila). -->
+    <color name="lcd_night_ink">#FFB000</color>
+    <color name="lcd_night_ghost">#241800</color>
+    <color name="lcd_night_bg">#000000</color>
+    <color name="lcd_night_border">#6B4A00</color>
+    <!-- Fondo alrededor de la pantallita y la rueda: de día y de noche. -->
+    <color name="case_day">#F2F4F5</color>
+    <color name="case_night">#000000</color>
+    <!-- Semáforo de temperatura del S40. -->
+    <color name="heat_green">#2E9E4F</color>
+    <color name="heat_yellow">#F2B705</color>
+    <color name="heat_red">#E0322B</color>
 </resources>

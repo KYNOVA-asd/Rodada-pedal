@@ -110,6 +110,17 @@
             android:textSize="17sp"
             android:textStyle="bold" />
 
+        <TextView
+            android:id="@+id/mode_history"
+            style="@style/ModeChoice"
+            android:gravity="center"
+            android:text="@string/history_button" />
+
+        <TextView
+            android:id="@+id/mode_flood"
+            style="@style/ModeChoice"
+            android:gravity="center" />
+
         <TextView android:id="@+id/mode_find" style="@style/ModeChoice"
             android:layout_marginTop="14dp" />
 

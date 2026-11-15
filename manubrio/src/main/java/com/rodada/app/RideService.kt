@@ -25,6 +25,14 @@ class RideService : Service(), LocationListener {
     private var lastSaveMs = 0L
     /** Hora de la última lectura buena, para sumar el tiempo detenido. */
     private var lastFixMs = 0L
+    /** Para contar parones: ya se movió, desde cuándo está en 0 y si ese parón ya contó. */
+    private var hasMoved = false
+    private var stopStartedMs = 0L
+    private var stopCounted = false
+    /** Encharcamientos del usuario y cuáles ya se avisaron en este recorrido. */
+    private var floodSpots: List<Pair<Double, Double>> = emptyList()
+    private var floodVersionLoaded = -1
+    private val floodsWarned = mutableSetOf<Int>()
     /** Velocidades de los últimos segundos, para detectar un frenón (posible caída). */
     private val recentSpeeds = ArrayDeque<Pair<Long, Float>>()
     private var lastBrakeMs = 0L
@@ -80,6 +88,7 @@ class RideService : Service(), LocationListener {
         RideState.hasFix = true
         lastGoodLocation = location
         UbicacionS40.actualizar(this, location)
+        checkFloods(location)
         val speedKmh = if (location.hasSpeed()) location.speed * 3.6f else 0f
         RideState.speedKmh = if (speedKmh >= MIN_SPEED_KMH) speedKmh else 0f
         val now = SystemClock.elapsedRealtime()
@@ -88,6 +97,7 @@ class RideService : Service(), LocationListener {
             RideState.stoppedMs += (now - lastFixMs).coerceAtMost(MAX_STOP_STEP_MS)
         }
         lastFixMs = now
+        countStops(now)
         checkHardBrake(now, speedKmh)
         if (RideState.speedKmh > 0f) {
             if (RideState.speedKmh > RideState.maxKmh) RideState.maxKmh = RideState.speedKmh
@@ -117,6 +127,41 @@ class RideService : Service(), LocationListener {
             pendingMeters += meters.toDouble()
             if (SystemClock.elapsedRealtime() - lastSaveMs >= SAVE_INTERVAL_MS) saveDistance()
             lastAcceptedLocation = location
+        }
+    }
+
+    /** Si llovió y hay un encharcamiento a menos de [FLOOD_WARN_METERS], avisa una vez. */
+    private fun checkFloods(location: Location) {
+        if (floodVersionLoaded != RideState.floodSpotsVersion) {
+            floodVersionLoaded = RideState.floodSpotsVersion
+            floodSpots = odometer.floodSpots()
+            floodsWarned.clear()
+        }
+        if (!RideState.rainRecent || floodSpots.isEmpty()) return
+        val result = FloatArray(1)
+        floodSpots.forEachIndexed { index, (lat, lon) ->
+            if (index in floodsWarned) return@forEachIndexed
+            Location.distanceBetween(location.latitude, location.longitude, lat, lon, result)
+            if (result[0] <= FLOOD_WARN_METERS) {
+                floodsWarned.add(index)
+                RideState.floodAlertMeters = result[0].toInt()
+            }
+        }
+    }
+
+    /** Un parón cuenta al llevar [STOP_MIN_MS] en 0 después de haberse movido. */
+    private fun countStops(now: Long) {
+        if (RideState.speedKmh > 0f) {
+            hasMoved = true
+            stopStartedMs = 0L
+            stopCounted = false
+            return
+        }
+        if (!hasMoved) return
+        if (stopStartedMs == 0L) stopStartedMs = now
+        if (!stopCounted && now - stopStartedMs >= STOP_MIN_MS) {
+            RideState.stops++
+            stopCounted = true
         }
     }
 
@@ -150,7 +195,7 @@ class RideService : Service(), LocationListener {
         if (RideState.running && lastFixMs > 0L) {
             odometer.saveRide(
                 RideState.elapsedSeconds(), RideState.distanceMeters.toDouble(),
-                RideState.maxKmh, RideState.minMovingKmh, RideState.stoppedMs / 1000L
+                RideState.maxKmh, RideState.minMovingKmh, RideState.stoppedMs / 1000L, RideState.stops
             )
         }
         odometer.close()
@@ -199,6 +244,8 @@ class RideService : Service(), LocationListener {
         private const val NOTIFICATION_ID = 1
         private const val MAX_ACCURACY_METERS = 25f
         private const val MAX_STOP_STEP_MS = 5_000L
+        private const val STOP_MIN_MS = 5_000L
+        private const val FLOOD_WARN_METERS = 300f
         private const val BRAKE_WINDOW_MS = 4_000L
         private const val BRAKE_FROM_KMH = 15f
         private const val BRAKE_TO_KMH = 3f

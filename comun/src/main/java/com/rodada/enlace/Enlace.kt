@@ -74,13 +74,19 @@ import java.util.UUID
  *                              esperar la cuenta (versión 12).
  * - CAIDA_AVISO\tenviado        Motorola → S40: terminó la cuenta; enviado = 1 si
  *                              se mandó el SMS y la llamada (versión 12).
+ * - CLIMA\ttempC\tdescripcion\tvientoKmh\tllovio\tlluviaEnMin\tpuestaSolMs
+ *                              Motorola → S40: clima de OpenWeatherMap durante el
+ *                              recorrido. llovio = 1 si llovió en las últimas horas;
+ *                              lluviaEnMin = -1 si no se espera lluvia (versión 13).
+ * - PEDIR_CLIMA                S40 → Motorola: tres toques; responde con CLIMA
+ *                              (reusa la última si tiene menos de 30 min) (versión 13).
  *
  * Privacidad: el contenido de NOTIF, DECIR y NAV no se guarda en disco ni en logs.
  */
 object Enlace {
     val UUID: UUID = java.util.UUID.fromString("6f1c2a4e-8d3b-4c55-9a1e-52d0a7c3e901")
     const val NOMBRE_SERVICIO = "Rodada Enlace"
-    const val VERSION = 12
+    const val VERSION = 13
     const val MAX_LINEA = 2048
     const val MAX_APP = 40
     const val MAX_TITULO = 80
@@ -115,6 +121,15 @@ sealed class Mensaje {
     data class Recorrido(val activo: Boolean) : Mensaje()
     object Frenon : Mensaje()
     data class Caida(val segundos: Int, val prueba: Boolean) : Mensaje()
+    data class Clima(
+        val tempC: Int,
+        val descripcion: String,
+        val vientoKmh: Int,
+        val llovio: Boolean,
+        val lluviaEnMin: Int,
+        val puestaSolMs: Long
+    ) : Mensaje()
+    object PedirClima : Mensaje()
     object CaidaOk : Mensaje()
     object CaidaAyuda : Mensaje()
     data class CaidaAviso(val enviado: Boolean) : Mensaje()
@@ -142,6 +157,11 @@ sealed class Mensaje {
             is Recorrido -> listOf("RECORRIDO", if (activo) "1" else "0")
             Frenon -> listOf("FRENON")
             is Caida -> listOf("CAIDA", segundos.toString(), if (prueba) "1" else "0")
+            is Clima -> listOf(
+                "CLIMA", tempC.toString(), descripcion, vientoKmh.toString(),
+                if (llovio) "1" else "0", lluviaEnMin.toString(), puestaSolMs.toString()
+            )
+            PedirClima -> listOf("PEDIR_CLIMA")
             CaidaOk -> listOf("CAIDA_OK")
             CaidaAyuda -> listOf("CAIDA_AYUDA")
             is CaidaAviso -> listOf("CAIDA_AVISO", if (enviado) "1" else "0")
@@ -191,6 +211,16 @@ sealed class Mensaje {
                     val segundos = campos.getOrNull(1)?.toIntOrNull()
                     if (segundos != null && segundos in 1..600) Caida(segundos, campos.getOrNull(2) == "1") else null
                 }
+                "CLIMA" -> {
+                    val temp = campos.getOrNull(1)?.toIntOrNull()
+                    val viento = campos.getOrNull(3)?.toIntOrNull()
+                    val lluviaEn = campos.getOrNull(5)?.toIntOrNull()
+                    val puesta = campos.getOrNull(6)?.toLongOrNull()
+                    if (temp != null && viento != null && lluviaEn != null && puesta != null) {
+                        Clima(temp, campos[2], viento, campos[4] == "1", lluviaEn, puesta)
+                    } else null
+                }
+                "PEDIR_CLIMA" -> PedirClima
                 "CAIDA_OK" -> CaidaOk
                 "CAIDA_AYUDA" -> CaidaAyuda
                 "CAIDA_AVISO" -> if (campos.size >= 2) CaidaAviso(campos[1] == "1") else null

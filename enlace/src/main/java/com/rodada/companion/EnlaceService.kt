@@ -42,6 +42,8 @@ class EnlaceService : Service() {
     private lateinit var alarmaCaida: Timbre
     private var caidaPrueba = false
     private val terminarCuenta = Runnable { avisarContacto() }
+    /** Clima durante el recorrido (lo único que sale a internet). */
+    private lateinit var clima: Clima
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -55,6 +57,7 @@ class EnlaceService : Service() {
             getSystemService(NotificationManager::class.java).cancel(ID_BUSCAR)
             canal?.enviar(Mensaje.BuscarFin)
         }
+        clima = Clima(this, pedirUbicacion = { enviar(Mensaje.PedirUbicacion) }) { enviar(it) }
         alarmaCaida = Timbre(this)
         detector = DetectorCaidas(this) { iniciarAlarmaCaida(prueba = false) }
         getSystemService(NotificationManager::class.java).createNotificationChannel(
@@ -141,6 +144,7 @@ class EnlaceService : Service() {
         nuevo.enviar(musica.actual)
         AvisosService.actual?.reenviarNavegacionActual()
         AvisosService.actual?.reenviarLlamadasActuales()
+        clima.reciente()?.let { nuevo.enviar(it) }
         Log.d(TAG, "conectado con ${socket.remoteDevice.address}")
         ponerEstado(EnlaceEstado.Estado.Conectado(nombre))
     }
@@ -195,20 +199,30 @@ class EnlaceService : Service() {
     private fun recibir(mensaje: Mensaje) {
         Log.d(TAG, "recibido $mensaje")
         when (mensaje) {
-            is Mensaje.Ubicacion -> UbicacionGuardada.guardar(this, mensaje)
+            is Mensaje.Ubicacion -> {
+                UbicacionGuardada.guardar(this, mensaje)
+                clima.nuevaUbicacion()
+            }
             is Mensaje.Decir -> voz.decir(mensaje.texto)
             Mensaje.Buscar -> sonarTimbre()
             Mensaje.BuscarFin -> timbre.detener()
             is Mensaje.Responder -> AvisosService.actual?.responderLlamada(mensaje.id, mensaje.accion)
-            is Mensaje.Recorrido -> if (mensaje.activo) detector.armar() else detector.desarmar()
+            is Mensaje.Recorrido -> if (mensaje.activo) {
+                detector.armar()
+                clima.iniciarRecorrido()
+            } else {
+                detector.desarmar()
+                clima.terminarRecorrido()
+            }
             Mensaje.Frenon -> detector.frenon()
+            Mensaje.PedirClima -> clima.pedirAhora()
             Mensaje.CaidaOk -> estoyBien(avisarS40 = false)
             Mensaje.CaidaAyuda -> if (EnlaceEstado.caida) {
                 principal.removeCallbacks(terminarCuenta)
                 avisarContacto()
             }
             is Mensaje.Hola, is Mensaje.Notif, is Mensaje.Cancion, is Mensaje.Nav, Mensaje.NavFin, is Mensaje.Llamada, is Mensaje.LlamadaFin, is Mensaje.LlamadaEnCurso, Mensaje.PedirUbicacion,
-            is Mensaje.Caida, is Mensaje.CaidaAviso -> Unit
+            is Mensaje.Caida, is Mensaje.CaidaAviso, is Mensaje.Clima -> Unit
         }
     }
 
@@ -367,6 +381,7 @@ class EnlaceService : Service() {
         musica.detener()
         timbre.detener()
         detector.desarmar()
+        clima.terminarRecorrido()
         principal.removeCallbacks(terminarCuenta)
         alarmaCaida.detener()
         EnlaceEstado.caida = false

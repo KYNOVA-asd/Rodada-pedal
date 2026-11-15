@@ -28,8 +28,10 @@ class NavArrowView(context: Context, attrs: AttributeSet?) : View(context, attrs
     }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.lcd_ink) }
 
-    fun setBacklit(backlit: Boolean) {
-        val ink = context.getColor(if (backlit) R.color.lcd_ink else R.color.lcd_day_ink)
+    fun setBacklit(backlit: Boolean) =
+        setColors(context.getColor(if (backlit) R.color.lcd_ink else R.color.lcd_day_ink))
+
+    fun setColors(ink: Int) {
         stroke.color = ink
         fill.color = ink
         invalidate()

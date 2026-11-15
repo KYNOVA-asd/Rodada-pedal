@@ -94,10 +94,24 @@ class MainActivity : Activity() {
         audioManager = getSystemService(AudioManager::class.java)
         vibrator = getSystemService(Vibrator::class.java)
         val infoPanel = findViewById<LinearLayout>(R.id.info_panel)
-        // Un toque: hora. Dos toques: última notificación. Mantener: iniciar o detener recorrido.
+        // Un toque: hora. Dos toques: última notificación. Tres toques: clima.
+        // Mantener: iniciar o detener recorrido.
         val gestures = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent) = true
+            override fun onDown(e: MotionEvent): Boolean {
+                // Tercer toque justo después de un doble toque: clima en vez de la notificación.
+                if (doubleTapPending) {
+                    handler.removeCallbacks(doubleTapAction)
+                    doubleTapPending = false
+                    ignoreNextTap = true
+                    tellWeather()
+                }
+                return true
+            }
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+                if (ignoreNextTap) {
+                    ignoreNextTap = false
+                    return true
+                }
                 when {
                     currentCall != null && !callActive -> vibrator.cancel()
                     page == Page.MAP -> openMap()
@@ -113,7 +127,13 @@ class MainActivity : Activity() {
                 return true
             }
             override fun onDoubleTap(e: MotionEvent): Boolean {
-                sayLastNotice()
+                if (ignoreNextTap) {
+                    ignoreNextTap = false
+                    return true
+                }
+                // Se espera un instante por si llega el tercer toque.
+                doubleTapPending = true
+                handler.postDelayed(doubleTapAction, TRIPLE_TAP_WAIT_MS)
                 return true
             }
             override fun onLongPress(e: MotionEvent) = toggleRide()
@@ -185,6 +205,10 @@ class MainActivity : Activity() {
         if (!isMotorolaTarget() && localMusic == null) startLocalMusic()
         ticker.reanudar()
         wakeScreen()
+        // Temperatura: Android avisa cuando cambia (sin sondeo).
+        registerReceiver(batteryReceiver, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+        handler.removeCallbacks(shiftPixels)
+        handler.postDelayed(shiftPixels, PIXEL_SHIFT_MS)
     }
 
     override fun onPause() {
@@ -193,6 +217,8 @@ class MainActivity : Activity() {
         // Pantalla apagada o app en segundo plano: la franja deja de animar.
         ticker.pausar()
         handler.removeCallbacks(dimScreen)
+        handler.removeCallbacks(shiftPixels)
+        unregisterReceiver(batteryReceiver)
         super.onPause()
     }
 
@@ -276,6 +302,138 @@ class MainActivity : Activity() {
         updateNavSummary()
         val seconds = (SystemClock.elapsedRealtime() - sessionStartedAtMs) / 1000L
         elapsed.text = getString(R.string.elapsed_value, seconds / 3600, (seconds / 60) % 60, seconds % 60)
+        updateDayNight()
+        val floodMeters = RideState.floodAlertMeters
+        if (floodMeters >= 0) {
+            RideState.floodAlertMeters = -1
+            warnFlood(floodMeters)
+        }
+    }
+
+    private var doubleTapPending = false
+    private var ignoreNextTap = false
+    private val doubleTapAction = Runnable {
+        doubleTapPending = false
+        sayLastNotice()
+    }
+    /** Último clima recibido y cuándo; se dice al tocar tres veces. */
+    private var lastWeather: Mensaje.Clima? = null
+    private var lastWeatherAtMs = 0L
+    private var weatherRequested = false
+    private val weatherTimeout = Runnable {
+        if (weatherRequested) {
+            weatherRequested = false
+            say(getString(R.string.speech_weather_failed))
+        }
+    }
+
+    /** Tres toques: el clima en voz. Si el último es reciente no se consulta de nuevo. */
+    private fun tellWeather() {
+        val weather = lastWeather
+        if (weather != null && System.currentTimeMillis() - lastWeatherAtMs < WEATHER_FRESH_MS) {
+            showWeather(weather)
+            say(weatherSentence(weather))
+            return
+        }
+        val link = enlace
+        if (link == null || !link.conectado) {
+            say(getString(R.string.speech_weather_no_link))
+            return
+        }
+        weatherRequested = true
+        link.enviar(Mensaje.PedirClima)
+        ticker.mostrarUnaVez(getString(R.string.weather_asking))
+        handler.removeCallbacks(weatherTimeout)
+        handler.postDelayed(weatherTimeout, WEATHER_WAIT_MS)
+    }
+
+    private fun weatherSentence(weather: Mensaje.Clima): String {
+        val parts = mutableListOf(getString(R.string.speech_weather, weather.tempC, weather.descripcion))
+        when {
+            weather.lluviaEnMin == 0 -> parts += getString(R.string.speech_weather_raining)
+            weather.lluviaEnMin in 1..RAIN_SOON_MIN -> parts += getString(R.string.speech_rain_soon, weather.lluviaEnMin)
+            else -> parts += getString(R.string.speech_weather_no_rain)
+        }
+        if (weather.vientoKmh >= WINDY_KMH) parts += getString(R.string.speech_weather_wind, weather.vientoKmh)
+        return parts.joinToString(". ")
+    }
+
+    /**
+     * Fondo de día (blanco) o de noche (negro) según el sol donde estás: salida y
+     * puesta calculadas con la última ubicación del GPS; sin ubicación, 7:00 a 19:00.
+     * Se revisa una vez por minuto.
+     */
+    private var isDay: Boolean? = null
+    private var dayNightCheckedMs = 0L
+    private fun updateDayNight() {
+        val now = System.currentTimeMillis()
+        if (isDay != null && now - dayNightCheckedMs < DAY_NIGHT_CHECK_MS) return
+        dayNightCheckedMs = now
+        val point = UbicacionS40.leer(this)
+        val day = if (point != null) {
+            Sol.esDeDia(point.latitud, point.longitud, now)
+        } else {
+            java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) in 7 until 19
+        }
+        if (day == isDay) return
+        isDay = day
+        findViewById<android.view.View>(R.id.root).setBackgroundColor(getColor(if (day) R.color.case_day else R.color.case_night))
+        val text = normalTextColor()
+        findViewById<TextView>(R.id.audio_route_status).setTextColor(text)
+        // El indicador del destino solo usa el color normal cuando no hay estado especial.
+        when (targetStatus.currentTextColor) {
+            COLOR_NORMAL, COLOR_NORMAL_DAY -> targetStatus.setTextColor(text)
+            COLOR_WARNING, COLOR_WARNING_DAY -> targetStatus.setTextColor(warningColor())
+        }
+        showLinkStatus()
+        applyLcdStyle()
+    }
+
+    private fun normalTextColor(): Int = if (isDay == true) COLOR_NORMAL_DAY else COLOR_NORMAL
+
+    /** El ámbar no se lee sobre blanco: de día uno más oscuro. */
+    private fun warningColor(): Int = if (isDay == true) COLOR_WARNING_DAY else COLOR_WARNING
+
+    /** Encharcamiento cerca y llovió: franja, voz y vibración. */
+    private fun warnFlood(meters: Int) {
+        ticker.mostrarUnaVez(getString(R.string.flood_ahead, meters))
+        say(getString(R.string.speech_flood, meters))
+        if (vibrator.hasVibrator()) {
+            vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300, 150, 300), -1))
+        }
+        wakeScreen()
+    }
+
+    /** Clima del Motorola: una pasada en la franja y voz solo si viene lluvia. */
+    private fun showWeather(weather: Mensaje.Clima) {
+        RideState.rainRecent = weather.llovio
+        if (weather !== lastWeather) {
+            lastWeather = weather
+            lastWeatherAtMs = System.currentTimeMillis()
+        }
+        if (weatherRequested) {
+            // Respuesta a los tres toques: se dice completo (y no se repite lo de la lluvia).
+            weatherRequested = false
+            handler.removeCallbacks(weatherTimeout)
+            ticker.mostrarUnaVez(weatherLine(weather))
+            say(weatherSentence(weather))
+            return
+        }
+        ticker.mostrarUnaVez(weatherLine(weather))
+        if (weather.lluviaEnMin in 1..60) say(getString(R.string.speech_rain_soon, weather.lluviaEnMin))
+    }
+
+    /** "26 C NUBES DISPERSAS - LLUVIA EN 40 MIN" para la franja LED. */
+    private fun weatherLine(weather: Mensaje.Clima): String {
+        val parts = mutableListOf(getString(R.string.weather_now, weather.tempC, weather.descripcion.uppercase()))
+        if (weather.vientoKmh >= WINDY_KMH) parts += getString(R.string.weather_wind, weather.vientoKmh)
+        when {
+            weather.lluviaEnMin == 0 -> parts += getString(R.string.weather_raining)
+            weather.lluviaEnMin in 1..RAIN_SOON_MIN -> parts += getString(R.string.weather_rain_in, weather.lluviaEnMin)
+        }
+        val toSunset = (weather.puestaSolMs - System.currentTimeMillis()) / 60_000L
+        if (weather.puestaSolMs > 0L && toSunset in 0..SUNSET_SOON_MIN) parts += getString(R.string.weather_sunset, toSunset)
+        return parts.joinToString(" - ")
     }
 
     private fun startAudioReceiver() {
@@ -446,7 +604,7 @@ class MainActivity : Activity() {
             val ride = if (RideState.running) {
                 OdometerStore.Ride(
                     RideState.elapsedSeconds(), RideState.distanceMeters.toDouble(),
-                    RideState.maxKmh, RideState.minMovingKmh, RideState.stoppedMs / 1000L
+                    RideState.maxKmh, RideState.minMovingKmh, RideState.stoppedMs / 1000L, RideState.stops
                 )
             } else {
                 store.lastRide()
@@ -464,9 +622,14 @@ class MainActivity : Activity() {
                     if (ride.minKmh < 0f) "-" else ride.minKmh.toInt().toString(),
                     ride.averageKmh.toInt(),
                     ride.stoppedSeconds / 60, ride.stoppedSeconds % 60,
-                    record.toInt()
+                    record.toInt(), ride.stops
                 )
             }
+        }
+        content.findViewById<TextView>(R.id.mode_history).setOnClickListener { showHistory() }
+        content.findViewById<TextView>(R.id.mode_flood).apply {
+            text = getString(R.string.mode_flood, OdometerStore(this@MainActivity).use { it.floodSpots().size })
+            setOnClickListener { dialog.dismiss(); showFloodMenu() }
         }
         content.findViewById<TextView>(R.id.mode_reset).setOnClickListener {
             if (RideState.running) {
@@ -654,10 +817,11 @@ class MainActivity : Activity() {
                 is Mensaje.LlamadaFin -> endCall(mensaje.id)
                 Mensaje.PedirUbicacion -> UbicacionS40.solicitar(this, rodadaVisible)
                 is Mensaje.Caida -> ringFall(mensaje)
+                is Mensaje.Clima -> showWeather(mensaje)
                 Mensaje.CaidaOk -> stopFall(tellMotorola = false)
                 is Mensaje.CaidaAviso -> fallFinished(mensaje)
                 is Mensaje.Hola, is Mensaje.Decir, is Mensaje.Responder, is Mensaje.Ubicacion,
-                is Mensaje.Recorrido, Mensaje.Frenon, Mensaje.CaidaAyuda -> Unit
+                is Mensaje.Recorrido, Mensaje.Frenon, Mensaje.CaidaAyuda, Mensaje.PedirClima -> Unit
             }
         }
         enlace = link
@@ -694,7 +858,7 @@ class MainActivity : Activity() {
             }
             EnlaceCliente.Estado.CONECTANDO -> {
                 linkStatus.setText(R.string.link_connecting)
-                linkStatus.setTextColor(COLOR_WARNING)
+                linkStatus.setTextColor(warningColor())
             }
             EnlaceCliente.Estado.DESCONECTADO -> {
                 linkStatus.setText(R.string.link_disconnected)
@@ -730,7 +894,7 @@ class MainActivity : Activity() {
         hidRemote = null
         wasConnected = false
         targetStatus.setText(R.string.target_status_phone)
-        targetStatus.setTextColor(COLOR_NORMAL)
+        targetStatus.setTextColor(normalTextColor())
         startLocalMusic()
         updateTicker()
     }
@@ -768,6 +932,68 @@ class MainActivity : Activity() {
             showPage(Page.NOTICES)
         }
         wakeScreen()
+    }
+
+    /** MODE → ENCHARCAMIENTOS: marcar donde estás o borrar todos. */
+    private fun showFloodMenu() {
+        val options = arrayOf(getString(R.string.flood_mark), getString(R.string.flood_clear))
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(R.string.flood_title)
+            .setItems(options) { _, which ->
+                if (which == 0) markFloodHere() else confirmClearFloods()
+            }
+            .setNegativeButton(R.string.mode_close, null)
+            .show()
+    }
+
+    private fun markFloodHere() {
+        val point = UbicacionS40.leer(this)?.takeIf {
+            System.currentTimeMillis() - it.horaMs <= FLOOD_FIX_MAX_AGE_MS && it.precisionMetros <= FLOOD_FIX_MAX_METERS
+        }
+        if (point == null) {
+            Toast.makeText(this, R.string.flood_no_gps, Toast.LENGTH_LONG).show()
+            return
+        }
+        OdometerStore(this).use { it.addFloodSpot(point.latitud, point.longitud) }
+        RideState.floodSpotsVersion++
+        Toast.makeText(this, R.string.flood_saved, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun confirmClearFloods() {
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(R.string.flood_clear)
+            .setMessage(R.string.flood_clear_message)
+            .setNegativeButton(R.string.permissions_cancel, null)
+            .setPositiveButton(R.string.flood_clear) { _, _ ->
+                OdometerStore(this).use { it.clearFloodSpots() }
+                RideState.floodSpotsVersion++
+            }
+            .show()
+    }
+
+    /** MODE → HISTORIAL: los últimos recorridos guardados en este S40. */
+    private fun showHistory() {
+        val rides = OdometerStore(this).use { it.rides(HISTORY_SIZE) }
+        val dateFormat = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.getDefault())
+        val rows = if (rides.isEmpty()) {
+            arrayOf(getString(R.string.mode_ride_none))
+        } else {
+            rides.map { ride ->
+                getString(
+                    R.string.history_row,
+                    dateFormat.format(java.util.Date(ride.endedAtMs)),
+                    ride.meters / 1000.0,
+                    ride.seconds / 3600, (ride.seconds / 60) % 60, ride.seconds % 60,
+                    ride.maxKmh.toInt(), ride.averageKmh.toInt(),
+                    ride.stops, ride.stoppedSeconds / 60, ride.stoppedSeconds % 60
+                )
+            }.toTypedArray()
+        }
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(R.string.history_title)
+            .setItems(rows, null)
+            .setPositiveButton(R.string.mode_close, null)
+            .show()
     }
 
     /** Alarma de posible caída (la decide el Motorola). Cualquier toque = "ESTOY BIEN". */
@@ -862,7 +1088,7 @@ class MainActivity : Activity() {
         callActive = false
         findViewById<MusicWheelView>(R.id.music_wheel).callMode = MusicWheelView.CallMode.RINGING
         // Mientras suena: brillo al máximo, sin volver a tenue ni al centro.
-        setBrightness(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL)
+        setBrightness(brightLevel())
         handler.removeCallbacks(dimScreen)
         if (vibrator.hasVibrator()) {
             vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 800, 600), 0))
@@ -996,9 +1222,84 @@ class MainActivity : Activity() {
         return parts.firstOrNull { Regex("""^\d+([.,]\d+)?\s?(m|km)$""").matches(it) } ?: ""
     }
 
+    /**
+     * Contra la imagen marcada: cada [PIXEL_SHIFT_MS] toda la pantalla se corre unos
+     * píxeles siguiendo un ciclo alrededor del centro, así nada queda siempre en el
+     * mismo píxel. Es tan poco que no se nota y los toques siguen a la vista.
+     */
+    private var pixelShiftStep = 0
+    private val shiftPixels = object : Runnable {
+        override fun run() {
+            pixelShiftStep = (pixelShiftStep + 1) % PIXEL_SHIFT_PATTERN.size
+            val (dx, dy) = PIXEL_SHIFT_PATTERN[pixelShiftStep]
+            val step = PIXEL_SHIFT_DP * resources.displayMetrics.density
+            findViewById<android.view.View>(R.id.root).apply {
+                translationX = dx * step
+                translationY = dy * step
+            }
+            handler.postDelayed(this, PIXEL_SHIFT_MS)
+        }
+    }
+
+    /** Calor (sol en el manubrio): aviso y brillo máximo más bajo hasta que enfríe. */
+    private var overheated = false
+    private var overheatWarnedHot = false
+    private val batteryReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+            val tenths = intent.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
+            if (tenths != Int.MIN_VALUE) onTemperature(tenths / 10f)
+        }
+    }
+
+    private fun onTemperature(celsius: Float) {
+        showHeatBorder(celsius)
+        when {
+            !overheated && celsius >= HOT_C -> {
+                overheated = true
+                ticker.mostrarUnaVez(getString(R.string.heat_warning, celsius.toInt()))
+                say(getString(R.string.speech_heat))
+                // Si está brillante, baja ya al brillo de calor.
+                if (window.attributes.screenBrightness != DIM_BRIGHTNESS) setBrightness(brightLevel())
+            }
+            overheated && !overheatWarnedHot && celsius >= VERY_HOT_C -> {
+                overheatWarnedHot = true
+                ticker.mostrarUnaVez(getString(R.string.heat_warning, celsius.toInt()))
+                say(getString(R.string.speech_very_hot))
+            }
+            overheated && celsius <= COOL_C -> {
+                overheated = false
+                overheatWarnedHot = false
+            }
+        }
+    }
+
+    /** Marco tipo semáforo: verde < 40 °C, amarillo 40–45 °C, rojo ≥ 45 °C. */
+    private var heatColor = 0
+    private fun showHeatBorder(celsius: Float) {
+        val color = getColor(
+            when {
+                celsius >= HOT_C -> R.color.heat_red
+                celsius >= WARM_C -> R.color.heat_yellow
+                else -> R.color.heat_green
+            }
+        )
+        if (color == heatColor) return
+        heatColor = color
+        val density = resources.displayMetrics.density
+        findViewById<android.view.View>(R.id.heat_border).background =
+            android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = 18f * density
+                setStroke((HEAT_BORDER_DP * density).toInt(), color)
+                setColor(android.graphics.Color.TRANSPARENT)
+            }
+    }
+
+    private fun brightLevel(): Float =
+        if (overheated) HOT_BRIGHTNESS else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL
+
     /** Brillo al máximo un rato; luego vuelve a tenue. Toque, notificación o maniobra. */
     private fun wakeScreen() {
-        setBrightness(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL)
+        setBrightness(brightLevel())
         handler.removeCallbacks(dimScreen)
         val ms = brightMs()
         if (ms > 0L) handler.postDelayed(dimScreen, ms)
@@ -1025,20 +1326,51 @@ class MainActivity : Activity() {
     private fun setLcdBacklight(backlit: Boolean) {
         if (lcdBacklit == backlit) return
         lcdBacklit = backlit
+        applyLcdStyle()
+    }
+
+    /** Estilo aplicado: noche ámbar, o de día el claro (brillante) / el tenue. */
+    private var lcdStyleNight: Boolean? = null
+    private var lcdStyleBacklit: Boolean? = null
+
+    /**
+     * De noche (según el sol): LED ámbar sobre negro, con brillo alto o tenue.
+     * De día: el LCD de siempre, celeste con brillo alto y verdoso al bajar el brillo.
+     */
+    private fun applyLcdStyle() {
+        val night = isDay == false
+        val backlit = lcdBacklit ?: false
+        if (lcdStyleNight == night && lcdStyleBacklit == backlit) return
+        lcdStyleNight = night
+        lcdStyleBacklit = backlit
         findViewById<android.view.View>(R.id.info_panel).setBackgroundResource(
-            if (backlit) R.drawable.info_panel_background else R.drawable.info_panel_day
+            when {
+                night -> R.drawable.info_panel_night
+                backlit -> R.drawable.info_panel_background
+                else -> R.drawable.info_panel_day
+            }
         )
         findViewById<android.view.View>(R.id.ticker).setBackgroundResource(
-            if (backlit) R.drawable.ticker_background else R.drawable.ticker_day
+            when {
+                night -> R.drawable.ticker_night
+                backlit -> R.drawable.ticker_background
+                else -> R.drawable.ticker_day
+            }
         )
         findViewById<android.view.View>(R.id.notice).setBackgroundResource(
-            if (backlit) R.drawable.notice_background else R.drawable.notice_day
+            when {
+                night -> R.drawable.notice_night
+                backlit -> R.drawable.notice_background
+                else -> R.drawable.notice_day
+            }
         )
+        val nightInk = getColor(R.color.lcd_night_ink)
+        val nightGhost = getColor(R.color.lcd_night_ghost)
         fun update(view: android.view.View) {
             when (view) {
-                is LedTextView -> view.setBacklit(backlit)
-                is LedTickerView -> view.setBacklit(backlit)
-                is NavArrowView -> view.setBacklit(backlit)
+                is LedTextView -> if (night) view.setColors(nightInk, nightGhost) else view.setBacklit(backlit)
+                is LedTickerView -> if (night) view.setColors(nightInk, nightGhost) else view.setBacklit(backlit)
+                is NavArrowView -> if (night) view.setColors(nightInk) else view.setBacklit(backlit)
                 is android.view.ViewGroup -> for (index in 0 until view.childCount) update(view.getChildAt(index))
             }
         }
@@ -1204,11 +1536,11 @@ class MainActivity : Activity() {
             }
             status.reconnecting -> {
                 targetStatus.setText(R.string.target_status_motorola_reconnecting)
-                targetStatus.setTextColor(COLOR_WARNING)
+                targetStatus.setTextColor(warningColor())
             }
             else -> {
                 targetStatus.setText(R.string.target_status_motorola_waiting)
-                targetStatus.setTextColor(COLOR_WARNING)
+                targetStatus.setTextColor(warningColor())
             }
         }
     }
@@ -1285,6 +1617,26 @@ class MainActivity : Activity() {
         private const val NOTICE_MS = 20_000L
         private const val MAPS_PACKAGE = "com.google.android.apps.maps"
         private const val DEFAULT_BRIGHT_MS = 60_000L
+        private const val HISTORY_SIZE = 20
+        private const val PIXEL_SHIFT_MS = 2 * 60 * 1000L
+        private const val PIXEL_SHIFT_DP = 2f
+        private val PIXEL_SHIFT_PATTERN = listOf(
+            0 to 0, 1 to 0, 1 to 1, 0 to 1, -1 to 1, -1 to 0, -1 to -1, 0 to -1, 1 to -1
+        )
+        private const val WARM_C = 40f
+        private const val HEAT_BORDER_DP = 4f
+        private const val HOT_C = 45f
+        private const val VERY_HOT_C = 50f
+        private const val COOL_C = 42f
+        private const val HOT_BRIGHTNESS = 0.5f
+        private const val WINDY_KMH = 20
+        private const val TRIPLE_TAP_WAIT_MS = 300L
+        private const val WEATHER_FRESH_MS = 30 * 60 * 1000L
+        private const val WEATHER_WAIT_MS = 20_000L
+        private const val RAIN_SOON_MIN = 180
+        private const val SUNSET_SOON_MIN = 60L
+        private const val FLOOD_FIX_MAX_AGE_MS = 2 * 60 * 1000L
+        private const val FLOOD_FIX_MAX_METERS = 50f
         private val DIM_OPTIONS_MS = listOf(10_000L, 30_000L, 60_000L, 120_000L, 300_000L, 0L)
         private const val KEY_DIM_MS = "bajar_brillo_ms"
         private const val DIM_BRIGHTNESS = 0.06f
@@ -1292,6 +1644,9 @@ class MainActivity : Activity() {
         private const val SWIPE_MIN_PX = 60
         private const val COLOR_OFF = 0xFF9E9E9E.toInt()
         private const val COLOR_NORMAL = 0xFFFFFFFF.toInt()
+        private const val COLOR_NORMAL_DAY = 0xFF25292B.toInt()
+        private const val COLOR_WARNING_DAY = 0xFFB26A00.toInt()
+        private const val DAY_NIGHT_CHECK_MS = 60_000L
         private const val COLOR_OK = 0xFF4CAF50.toInt()
         private const val COLOR_WARNING = 0xFFFFC107.toInt()
         private const val COLOR_LED_BLUE = 0xFF2EA8FF.toInt()

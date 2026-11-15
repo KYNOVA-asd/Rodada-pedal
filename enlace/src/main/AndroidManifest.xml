@@ -13,6 +13,8 @@
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Solo para consultar el clima (OpenWeatherMap) durante un recorrido. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-feature android:name="android.hardware.telephony" android:required="false" />
 

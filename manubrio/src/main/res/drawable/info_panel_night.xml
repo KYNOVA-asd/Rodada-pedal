@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Pantallita de noche: negro con borde ámbar tenue. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="@color/lcd_night_bg" />
+    <stroke android:width="2dp" android:color="@color/lcd_night_border" />
+    <corners android:radius="18dp" />
+</shape>
