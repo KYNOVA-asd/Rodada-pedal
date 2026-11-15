@@ -61,6 +61,7 @@ class EnlaceCliente(
     fun iniciar() {
         if (activo) return
         activo = true
+        actual = this
         appContext.registerReceiver(
             receptor, IntentFilter(BluetoothDevice.ACTION_ACL_CONNECTED), Context.RECEIVER_NOT_EXPORTED
         )
@@ -85,6 +86,7 @@ class EnlaceCliente(
     fun detener() {
         if (!activo) return
         activo = false
+        if (actual === this) actual = null
         principal.removeCallbacks(reintento)
         try {
             appContext.unregisterReceiver(receptor)
@@ -140,6 +142,7 @@ class EnlaceCliente(
         intento = 0
         nuevo.iniciar()
         nuevo.enviar(Mensaje.Hola(Enlace.VERSION, "S40"))
+        UbicacionS40.leer(appContext)?.let { nuevo.enviar(it) }
         Log.d(TAG, "enlace conectado")
         cambiar(Estado.CONECTADO)
     }
@@ -160,6 +163,10 @@ class EnlaceCliente(
 
     companion object {
         private const val TAG = "RodadaEnlace"
+        @Volatile private var actual: EnlaceCliente? = null
+
+        fun enviarUbicacion(punto: Mensaje.Ubicacion): Boolean =
+            actual?.takeIf { it.conectado }?.enviar(punto) == true
         /** Pocos reintentos y luego silencio hasta que el Motorola reaparezca. */
         private val ESPERAS_MS = longArrayOf(3_000L, 10_000L, 30_000L, 60_000L)
     }

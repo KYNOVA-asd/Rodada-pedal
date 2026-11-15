@@ -174,6 +174,7 @@ class EnlaceService : Service() {
     private fun recibir(mensaje: Mensaje) {
         Log.d(TAG, "recibido $mensaje")
         when (mensaje) {
+            is Mensaje.Ubicacion -> UbicacionGuardada.guardar(this, mensaje)
             is Mensaje.Decir -> voz.decir(mensaje.texto)
             Mensaje.Buscar -> sonarTimbre()
             Mensaje.BuscarFin -> timbre.detener()

@@ -55,13 +55,16 @@ import java.util.UUID
  * - BUSCAR                     Ambos lados: "buscar mi teléfono", el otro suena
  *                              fuerte unos segundos (versión 8).
  * - BUSCAR_FIN                 Ambos lados: dejar de sonar (versión 8).
+ * - UBICACION\tlatitud\tlongitud\thoraMs\tprecisionMetros
+ *                              S40 → Motorola: posición GPS del recorrido
+ *                              (versión 9). Se conserva solo el último punto.
  *
  * Privacidad: el contenido de NOTIF, DECIR y NAV no se guarda en disco ni en logs.
  */
 object Enlace {
     val UUID: UUID = java.util.UUID.fromString("6f1c2a4e-8d3b-4c55-9a1e-52d0a7c3e901")
     const val NOMBRE_SERVICIO = "Rodada Enlace"
-    const val VERSION = 8
+    const val VERSION = 9
     const val MAX_LINEA = 2048
     const val MAX_APP = 40
     const val MAX_TITULO = 80
@@ -73,6 +76,7 @@ object Enlace {
 
 sealed class Mensaje {
     data class Hola(val version: Int, val nombre: String) : Mensaje()
+    data class Ubicacion(val latitud: Double, val longitud: Double, val horaMs: Long, val precisionMetros: Float) : Mensaje()
     data class Decir(val texto: String) : Mensaje()
     data class Notif(val app: String, val titulo: String, val texto: String) : Mensaje()
     data class Cancion(val estado: Estado, val artista: String, val titulo: String) : Mensaje() {
@@ -99,6 +103,7 @@ sealed class Mensaje {
     fun codificar(): String {
         val campos = when (this) {
             is Hola -> listOf("HOLA", version.toString(), nombre)
+            is Ubicacion -> listOf("UBICACION", latitud.toString(), longitud.toString(), horaMs.toString(), precisionMetros.toString())
             is Decir -> listOf("DECIR", texto)
             is Notif -> listOf("NOTIF", app, titulo, texto)
             is Cancion -> listOf("CANCION", estado.name, artista, titulo)
@@ -127,6 +132,16 @@ sealed class Mensaje {
             val campos = linea.split('\t').map { desescapar(it) }
             return when (campos[0]) {
                 "HOLA" -> if (campos.size >= 3) Hola(campos[1].toIntOrNull() ?: 0, campos[2]) else null
+                "UBICACION" -> {
+                    val lat = campos.getOrNull(1)?.toDoubleOrNull()
+                    val lon = campos.getOrNull(2)?.toDoubleOrNull()
+                    val hora = campos.getOrNull(3)?.toLongOrNull()
+                    val precision = campos.getOrNull(4)?.toFloatOrNull()
+                    if (campos.size == 5 && lat != null && lon != null && hora != null && precision != null &&
+                        lat.isFinite() && lat in -90.0..90.0 && lon.isFinite() && lon in -180.0..180.0 &&
+                        hora > 0L && precision.isFinite() && precision in 0f..100f
+                    ) Ubicacion(lat, lon, hora, precision) else null
+                }
                 "DECIR" -> if (campos.size >= 2) Decir(campos[1]) else null
                 "NOTIF" -> if (campos.size >= 4) Notif(campos[1], campos[2], campos[3]) else null
                 "CANCION" -> {

@@ -601,7 +601,7 @@ class MainActivity : Activity() {
                     findingMotorola = false
                 }
                 is Mensaje.LlamadaFin -> endCall(mensaje.id)
-                is Mensaje.Hola, is Mensaje.Decir, is Mensaje.Responder -> Unit
+                is Mensaje.Hola, is Mensaje.Decir, is Mensaje.Responder, is Mensaje.Ubicacion -> Unit
             }
         }
         enlace = link

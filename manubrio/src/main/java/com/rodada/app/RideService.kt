@@ -19,6 +19,7 @@ import android.os.SystemClock
 class RideService : Service(), LocationListener {
     private lateinit var locationManager: LocationManager
     private var lastAcceptedLocation: Location? = null
+    private var lastGoodLocation: Location? = null
     private lateinit var odometer: OdometerStore
     private var pendingMeters = 0.0
     private var lastSaveMs = 0L
@@ -69,6 +70,8 @@ class RideService : Service(), LocationListener {
         }
 
         RideState.hasFix = true
+        lastGoodLocation = location
+        UbicacionS40.actualizar(this, location)
         val speedKmh = if (location.hasSpeed()) location.speed * 3.6f else 0f
         RideState.speedKmh = if (speedKmh >= MIN_SPEED_KMH) speedKmh else 0f
 
@@ -104,6 +107,7 @@ class RideService : Service(), LocationListener {
 
     override fun onDestroy() {
         locationManager.removeUpdates(this)
+        lastGoodLocation?.let { UbicacionS40.actualizar(this, it, forzar = true) }
         saveDistance()
         odometer.close()
         RideState.finish()
