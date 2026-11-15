@@ -31,6 +31,15 @@ Apps quitadas por ADB del usuario principal (restaurables): Chrome, Meet,
 Drive, Google TV, Home, Google Go, Asistente, YouTube, Google One, Gmail y
 tres componentes de Facebook.
 
+También quitados (rastreo de fábrica, telemetría y relleno): com.dti.amx
+(instalador de Telcel), com.sw.writedateservices, co.sitic.pp, Tencent
+Soter, AdServices, OnDevicePersonalization, Feedback, Cronología,
+Bienestar digital, Safety Hub, Restore, PartnerSetup, recomendación de
+impresión, pruebas de fábrica (zyt.agingtest, sprd.validationtools,
+sprd.cameracalibration, sprd.camta, sprd.logmanager), proveedores de
+correo/navegador de ejemplo y el salvapantallas básico.
+Restaurar uno: adb -s S404823093183 shell cmd package install-existing PAQUETE
+
 Apps conservadas: Play Store, Google Maps, YouTube Music, Servicios de
 Google, WebView y el motor de voz de Android.
 
