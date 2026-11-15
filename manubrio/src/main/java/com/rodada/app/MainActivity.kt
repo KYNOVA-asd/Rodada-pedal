@@ -258,7 +258,11 @@ class MainActivity : Activity() {
         updateAudioButton()
         if (RideState.running && !RideState.hasFix) {
             speed.text = getString(R.string.searching_gps)
-            speedUnit.text = ""
+            speedUnit.text = if (RideState.accuracyMeters > 0f) {
+                getString(R.string.gps_accuracy, RideState.accuracyMeters.toInt())
+            } else {
+                getString(R.string.gps_satellites, Satelites.vistos, Satelites.usados)
+            }
         } else {
             speed.text = getString(R.string.speed_value, RideState.speedKmh.toInt())
             speedUnit.setText(R.string.speed_unit)

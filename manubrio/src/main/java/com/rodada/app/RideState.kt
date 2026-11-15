@@ -8,6 +8,8 @@ internal object RideState {
         private set
     var hasFix = false
     var speedKmh = 0f
+    /** Precisión de la última lectura del GPS (aunque se haya descartado); -1 si no hay. */
+    var accuracyMeters = -1f
     var distanceMeters = 0f
     private var startedAtMs = 0L
     private var finalElapsedMs = 0L
@@ -16,6 +18,7 @@ internal object RideState {
         running = true
         hasFix = false
         speedKmh = 0f
+        accuracyMeters = -1f
         distanceMeters = 0f
         startedAtMs = SystemClock.elapsedRealtime()
         finalElapsedMs = 0L

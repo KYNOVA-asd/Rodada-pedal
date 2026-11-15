@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.location.Location
+import android.location.LocationListener
 import android.location.LocationManager
 import android.os.CancellationSignal
 import android.os.Handler
@@ -15,12 +16,15 @@ import com.rodada.enlace.Mensaje
 internal object UbicacionS40 {
     private const val ARCHIVO = "ultima_ubicacion"
     private const val INTERVALO_MS = 10_000L
-    private const val PLAZO_MS = 30_000L
+    /** El GPS del S40 tarda minutos en arrancar en frío; con 30 s nunca se ubicaba. */
+    private const val PLAZO_MS = 120_000L
+    private const val QUIEN = "lectura"
     private val principal = Handler(Looper.getMainLooper())
     private var ultimoGuardadoMs = 0L
     private var ultima: Mensaje.Ubicacion? = null
     private var pendienteRecorrido = false
-    private var lecturaUnica: CancellationSignal? = null
+    private var lecturaUnica: LocationListener? = null
+    private var gestor: LocationManager? = null
     private var lecturaRed: CancellationSignal? = null
     private var enviadaEnSolicitud = false
     private var vencimiento: Runnable? = null
@@ -51,24 +55,29 @@ internal object UbicacionS40 {
             ultimo?.let { EnlaceCliente.enviarUbicacion(it) }
             return
         }
-        val senal = CancellationSignal()
-        lecturaUnica = senal
-        programarVencimiento(context.applicationContext)
-        try {
-            gps.getCurrentLocation(LocationManager.GPS_PROVIDER, senal, context.mainExecutor) { location ->
-                if (lecturaUnica !== senal) return@getCurrentLocation
-                if (location != null && location.hasAccuracy() && location.accuracy <= 25f) {
+        // Se escucha el GPS hasta la primera lectura buena o hasta PLAZO_MS.
+        val oyente = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                if (lecturaUnica !== this) return
+                if (location.hasAccuracy() && location.accuracy <= 25f) {
                     cancelarSolicitud()
                     actualizar(context.applicationContext, location, forzar = true)
-                } else {
-                    lecturaUnica = null
-                    if (lecturaRed == null) {
-                        val enviada = enviadaEnSolicitud
-                        cancelarSolicitud()
-                        if (!enviada) ultimo?.let { EnlaceCliente.enviarUbicacion(it) }
-                    }
                 }
             }
+
+            override fun onProviderDisabled(provider: String) {
+                if (lecturaUnica !== this) return
+                val enviada = enviadaEnSolicitud
+                cancelarSolicitud()
+                if (!enviada) ultimo?.let { EnlaceCliente.enviarUbicacion(it) }
+            }
+        }
+        lecturaUnica = oyente
+        gestor = gps
+        programarVencimiento(context.applicationContext)
+        try {
+            gps.requestLocationUpdates(LocationManager.GPS_PROVIDER, 1000L, 0f, oyente, Looper.getMainLooper())
+            Satelites.empezar(gps, QUIEN)
             // Dentro de casa puede llegar primero una posición aproximada de Wi-Fi/red.
             if (lecturaUnica != null && gps.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 val senalRed = CancellationSignal()
@@ -108,8 +117,10 @@ internal object UbicacionS40 {
     private fun cancelarSolicitud() {
         vencimiento?.let { principal.removeCallbacks(it) }
         vencimiento = null
-        lecturaUnica?.cancel()
+        lecturaUnica?.let { gestor?.removeUpdates(it) }
         lecturaUnica = null
+        gestor?.let { Satelites.terminar(QUIEN) }
+        gestor = null
         lecturaRed?.cancel()
         lecturaRed = null
         enviadaEnSolicitud = false

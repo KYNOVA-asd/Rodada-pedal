@@ -46,6 +46,7 @@ class RideService : Service(), LocationListener {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
             )
             RideState.begin()
+            Satelites.empezar(locationManager, QUIEN)
             locationManager.requestLocationUpdates(
                 LocationManager.GPS_PROVIDER,
                 1000L,
@@ -62,6 +63,7 @@ class RideService : Service(), LocationListener {
     }
 
     override fun onLocationChanged(location: Location) {
+        RideState.accuracyMeters = if (location.hasAccuracy()) location.accuracy else -1f
         if (!location.hasAccuracy() || location.accuracy > MAX_ACCURACY_METERS) {
             RideState.hasFix = false
             RideState.speedKmh = 0f
@@ -107,6 +109,7 @@ class RideService : Service(), LocationListener {
 
     override fun onDestroy() {
         locationManager.removeUpdates(this)
+        Satelites.terminar(QUIEN)
         lastGoodLocation?.let { UbicacionS40.actualizar(this, it, forzar = true) }
         saveDistance()
         odometer.close()
@@ -154,6 +157,7 @@ class RideService : Service(), LocationListener {
         private const val CHANNEL_ID = "rodada_recorrido"
         private const val NOTIFICATION_ID = 1
         private const val MAX_ACCURACY_METERS = 25f
+        private const val QUIEN = "recorrido"
         private const val MIN_SPEED_KMH = 2f
         private const val MIN_DISTANCE_STEP_METERS = 3f
         private const val MAX_BIKE_SPEED_MPS = 25f
