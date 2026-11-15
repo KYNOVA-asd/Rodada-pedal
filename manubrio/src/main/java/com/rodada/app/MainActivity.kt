@@ -21,6 +21,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.LinearLayout
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import com.rodada.enlace.Mensaje
@@ -33,6 +34,7 @@ class MainActivity : Activity() {
     private lateinit var speedUnit: LedTextView
     private lateinit var distance: LedTextView
     private lateinit var elapsed: LedTextView
+    private var lastAudioRoute: Boolean? = null
     private val sessionStartedAtMs = SystemClock.elapsedRealtime()
     private lateinit var audioManager: AudioManager
     private lateinit var vibrator: Vibrator
@@ -147,6 +149,14 @@ class MainActivity : Activity() {
         MusicaS40Service.onRadioChanged = { updateTicker() }
         ticker.setOnClickListener { onTickerTapped() }
         findViewById<android.view.View>(R.id.menu_button).setOnClickListener(::showMenu)
+        findViewById<ImageButton>(R.id.audio_button).apply {
+            setOnClickListener {
+                val receiver = AudioBridgeReceiver.current
+                if (receiver == null) startAudioReceiver()
+                else stopService(Intent(this@MainActivity, AudioBridgeReceiver::class.java))
+                updateAudioButton()
+            }
+        }
         if (isMotorolaTarget() && hasBluetoothPermissions()) {
             startMotorola()
         } else {
@@ -242,6 +252,7 @@ class MainActivity : Activity() {
     }
 
     private fun render() {
+        updateAudioButton()
         if (RideState.running && !RideState.hasFix) {
             speed.text = getString(R.string.searching_gps)
             speedUnit.text = ""
@@ -258,6 +269,36 @@ class MainActivity : Activity() {
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+    }
+
+    private fun startAudioReceiver() {
+        val address = prefs.getString(KEY_MOTOROLA_ADDRESS, null)
+        if (address == null) {
+            Toast.makeText(this, R.string.audio_no_motorola, Toast.LENGTH_SHORT).show()
+            return
+        }
+        withBluetoothPermission {
+            startForegroundService(Intent(this, AudioBridgeReceiver::class.java)
+                .putExtra(AudioBridgeReceiver.EXTRA_ADDRESS, address))
+        }
+    }
+
+    private fun updateAudioButton() {
+        val button = findViewById<ImageButton>(R.id.audio_button)
+        val active = AudioBridgeReceiver.state == AudioBridgeReceiver.State.PLAYING
+        val connecting = AudioBridgeReceiver.state == AudioBridgeReceiver.State.CONNECTING
+        button.setImageResource(if (active || connecting) R.drawable.ic_audio_speaker else R.drawable.ic_audio_headphones)
+        findViewById<TextView>(R.id.audio_route_status).setText(
+            if (active || connecting) R.string.audio_route_s40_short else R.string.audio_route_motorola_short
+        )
+        if (lastAudioRoute != null && lastAudioRoute != active && !connecting) {
+            ticker.mostrarUnaVez(getString(if (active) R.string.audio_route_s40 else R.string.audio_route_motorola))
+        }
+        lastAudioRoute = active
+        button.contentDescription = getString(
+            if (AudioBridgeReceiver.current != null) R.string.audio_button_stop else R.string.audio_button_start
+        )
+        button.alpha = if (active) 1f else if (connecting) 0.8f else 0.7f
     }
 
     private fun toggleRide() {
@@ -290,6 +331,19 @@ class MainActivity : Activity() {
                     return
                 }
             }
+        }
+        if (AudioBridgeReceiver.current != null &&
+            (zone == MusicWheelView.Zone.UP || zone == MusicWheelView.Zone.DOWN)
+        ) {
+            audioManager.adjustStreamVolume(AudioManager.STREAM_MUSIC,
+                if (zone == MusicWheelView.Zone.UP) AudioManager.ADJUST_RAISE else AudioManager.ADJUST_LOWER, 0)
+            ticker.mostrarUnaVez(getString(
+                if (zone == MusicWheelView.Zone.UP) R.string.volume_up_feedback else R.string.volume_down_feedback
+            ))
+            if (vibrator.hasVibrator()) vibrator.vibrate(
+                VibrationEffect.createOneShot(30L, VibrationEffect.DEFAULT_AMPLITUDE)
+            )
+            return
         }
         if (!isMotorolaTarget() && MusicaS40Service.currentStation != null &&
             MusicaS40Service.sendRadioAction(zone)

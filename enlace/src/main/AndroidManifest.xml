@@ -53,7 +53,7 @@
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
         <service
-            android:name=".AudioProbeService"
+            android:name=".AudioBridgeService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
     </application>

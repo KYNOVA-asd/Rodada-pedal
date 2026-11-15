@@ -32,6 +32,16 @@
     <string name="speech_speed">Vas a %1$d kilómetros por hora.</string>
     <string name="menu_icon">MODE</string>
     <string name="menu_description">Menú</string>
+    <string name="audio_button_start">Encender audio del Motorola en la bocina del S40.</string>
+    <string name="audio_button_stop">Apagar audio del Motorola en la bocina del S40.</string>
+    <string name="audio_route_motorola_short">MOTO</string>
+    <string name="audio_route_s40_short">S40</string>
+    <string name="audio_route_motorola">AUDIO MOTO</string>
+    <string name="audio_route_s40">AUDIO S40</string>
+    <string name="audio_no_motorola">Vincula primero el Motorola con el S40.</string>
+    <string name="audio_connecting">Conectando audio del Motorola…</string>
+    <string name="audio_playing">Audio del Motorola en el S40</string>
+    <string name="audio_bridge_title">Rodada: audio del Motorola</string>
     <string name="mode_wheel_label">RUEDA DE MÚSICA</string>
     <string name="mode_voice_label">VOZ</string>
     <string name="mode_odometer_label">KILOMETRAJE TOTAL</string>

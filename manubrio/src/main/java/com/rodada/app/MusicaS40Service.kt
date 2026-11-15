@@ -19,7 +19,10 @@ class MusicaS40Service : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        if (sbn.packageName == RADIO_PACKAGE) publish(sbn)
+        if (sbn.packageName == RADIO_PACKAGE) {
+            publish(sbn)
+            if (AudioBridgeReceiver.current != null) stopRadioForAudioBridge()
+        }
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
@@ -32,6 +35,7 @@ class MusicaS40Service : NotificationListenerService() {
     }
 
     private fun publish(radio: StatusBarNotification?) {
+        if (radio == null) radioStopRequested = false
         radioActions = radio?.notification?.actions?.map { it.actionIntent }.orEmpty()
         val title = radio?.notification?.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
         val station = title?.takeIf { it.isNotBlank() }?.take(40)
@@ -43,6 +47,7 @@ class MusicaS40Service : NotificationListenerService() {
     companion object {
         private const val RADIO_PACKAGE = "com.android.fmradio"
         @Volatile private var radioActions: List<PendingIntent> = emptyList()
+        @Volatile private var radioStopRequested = false
         @Volatile var currentStation: String? = null
             private set
         var onRadioChanged: (() -> Unit)? = null
@@ -59,6 +64,20 @@ class MusicaS40Service : NotificationListenerService() {
                 intent.send()
                 true
             } catch (_: PendingIntent.CanceledException) {
+                false
+            }
+        }
+
+        /** Apaga la radio solo mientras el puente usa la bocina del S40. */
+        fun stopRadioForAudioBridge(): Boolean {
+            if (currentStation == null || radioStopRequested) return false
+            val intent = radioActions.getOrNull(1) ?: return false
+            return try {
+                radioStopRequested = true
+                intent.send()
+                true
+            } catch (_: PendingIntent.CanceledException) {
+                radioStopRequested = false
                 false
             }
         }

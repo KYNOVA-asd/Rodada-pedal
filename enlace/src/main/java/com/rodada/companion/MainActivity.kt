@@ -18,12 +18,22 @@ import android.widget.TextView
 import android.widget.Toast
 
 class MainActivity : Activity() {
+    private val bridgeHandler = Handler(Looper.getMainLooper())
+    private val refreshBridge = object : Runnable {
+        override fun run() {
+            showBridgeState()
+            bridgeHandler.postDelayed(this, 1_000L)
+        }
+    }
     private lateinit var estado: TextView
     private lateinit var boton: Button
     private lateinit var accesoAvisos: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (AudioBridgeService.state == AudioBridgeService.State.OFF) {
+            AudioBridgeService.restoreVolumeIfNeeded(this)
+        }
         setContentView(R.layout.activity_main)
         estado = findViewById(R.id.state)
         boton = findViewById(R.id.toggle)
@@ -57,7 +67,10 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.choose_apps).setOnClickListener {
             startActivity(Intent(this, AppsActivity::class.java))
         }
-        findViewById<Button>(R.id.probe_audio).setOnClickListener { startAudioProbe() }
+        findViewById<Button>(R.id.probe_audio).setOnClickListener {
+            if (AudioBridgeService.state == AudioBridgeService.State.OFF) startAudioBridge()
+            else stopService(Intent(this, AudioBridgeService::class.java))
+        }
         if (Ajustes(this).enlaceActivo && tienePermisos() && !servicioActivo()) activar()
     }
 
@@ -94,10 +107,12 @@ class MainActivity : Activity() {
         accesoAvisos.text = getString(
             if (permitido) R.string.listener_on else R.string.listener_off
         ) + "\n" + resources.getQuantityString(R.plurals.apps_chosen, elegidas, elegidas)
-        showProbeResult()
+        bridgeHandler.removeCallbacks(refreshBridge)
+        refreshBridge.run()
     }
 
     override fun onPause() {
+        bridgeHandler.removeCallbacks(refreshBridge)
         EnlaceEstado.oyenteBuscando = null
         EnlaceEstado.oyente = null
         super.onPause()
@@ -147,7 +162,7 @@ class MainActivity : Activity() {
         startForegroundService(Intent(this, EnlaceService::class.java))
     }
 
-    private fun startAudioProbe() {
+    private fun startAudioBridge() {
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), AUDIO_PERMISSION)
         } else requestProjection()
@@ -164,22 +179,23 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != AUDIO_PROJECTION || resultCode != RESULT_OK || data == null) return
-        findViewById<TextView>(R.id.probe_result).setText(R.string.probe_waiting)
-        startForegroundService(Intent(this, AudioProbeService::class.java)
-            .putExtra(AudioProbeService.EXTRA_RESULT_CODE, resultCode)
-            .putExtra(AudioProbeService.EXTRA_TOKEN, data))
-        Handler(Looper.getMainLooper()).postDelayed(::showProbeResult, 7_000L)
+        startForegroundService(Intent(this, AudioBridgeService::class.java)
+            .putExtra(AudioBridgeService.EXTRA_RESULT_CODE, resultCode)
+            .putExtra(AudioBridgeService.EXTRA_TOKEN, data))
     }
 
-    private fun showProbeResult() {
-        val text = when (AudioProbeService.result) {
-            AudioProbeService.Result.DETECTED -> R.string.probe_detected
-            AudioProbeService.Result.SILENT -> R.string.probe_silent
-            AudioProbeService.Result.FAILED -> R.string.probe_failed
-            AudioProbeService.Result.RUNNING -> R.string.probe_waiting
-            AudioProbeService.Result.IDLE -> return
+    private fun showBridgeState() {
+        val state = AudioBridgeService.state
+        val text = when (state) {
+            AudioBridgeService.State.OFF -> R.string.bridge_off
+            AudioBridgeService.State.WAITING -> R.string.bridge_waiting
+            AudioBridgeService.State.STREAMING -> R.string.bridge_streaming
+            AudioBridgeService.State.ERROR -> R.string.bridge_error
         }
         findViewById<TextView>(R.id.probe_result).setText(text)
+        findViewById<Button>(R.id.probe_audio).setText(
+            if (state == AudioBridgeService.State.OFF) R.string.probe_audio else R.string.bridge_stop
+        )
     }
 
     companion object {
