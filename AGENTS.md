@@ -95,38 +95,84 @@ antes de dar la tarea por terminada.
 
 ## Lo que ya existe
 
+### Rodada (S40, manubrio/)
+
+- Pantalla toda en LED azul (LedTextView, LedTickerView, NavArrowView);
+  la rueda y los botones no son LED. Modo día: con el brillo bajo los
+  paneles cambian a fondo claro (setBacklit); con brillo alto, fondo
+  oscuro iluminado.
+- Tres páginas con deslizar: centro (reloj, velocidad, distancia,
+  tiempo); dedo de izquierda a derecha = MAPA (indicaciones de Google
+  Maps del Motorola; un toque abre Maps en el S40); de derecha a
+  izquierda = NOTIFICACIONES.
+- Gestos: toque = hora / leer aviso; doble toque = repetir el último
+  aviso; deslizar arriba = descartar; pulsación larga = iniciar o
+  detener recorrido. Insignia ✉ con avisos sin leer (últimos 5).
+- Brillo: baja a los 10 s sin tocar y sube con un toque, un aviso o
+  una maniobra nueva. Con brillo bajo se despierta en ACTION_UP (al
+  cambiar el brillo en ACTION_DOWN se pierde el gesto).
+- Gira en las cuatro orientaciones (fullSensor + configChanges); en
+  horizontal la pantalla y la rueda van lado a lado.
+- Se muestra encima de la pantalla de bloqueo (showWhenLocked).
 - Velocímetro (RideService, RideState): servicio en primer plano con GPS
-  solo durante el recorrido; velocidad, distancia, tiempo y reloj en
-  números grandes. Mantener pulsado el panel de arriba inicia o detiene
-  el recorrido. Exportar GPX: pendiente.
-- Rueda de música (MusicWheelView): cinco zonas (arriba volumen +,
-  abajo volumen −, izquierda anterior, derecha siguiente, centro
-  reproducir/pausa). Cada zona vibra. En este teléfono usa teclas
-  multimedia del sistema y muestra el indicador de volumen de Android.
-  Log por zona con la etiqueta RodadaRueda.
-- Voz (SpeechController): TextToSpeech del sistema con voz en español
-  instalada. Un toque en el panel de arriba dice la hora y, durante un
-  recorrido, la velocidad. Pide foco de audio temporal y lo suelta al
-  terminar de hablar.
-- Control del Motorola por Bluetooth HID (HidMediaRemote, ver docs/hid.md): el S40 se
-  presenta como control multimedia (descriptor solo Consumer Control,
-  sin teclado) y manda las cinco teclas de la rueda al otro teléfono,
-  sin instalarle nada. Probado y funcionando con YouTube Music en el
-  Motorola. Log con la etiqueta RodadaHid.
-  - Menú ☰ (esquina de la rueda): "Rueda: este teléfono" o
-    "Rueda: Motorola". El destino se guarda en SharedPreferences.
-  - El HID se registra solo mientras el destino es Motorola y se suelta
-    con unregisterApp() al cambiar de destino o cerrar la app.
-  - Indicador pequeño abajo a la izquierda (verde conectado, ámbar
-    reconectando, rojo error). Si se desconecta, reintenta cada 15 s.
-  - Emparejamiento la primera vez: desde Ajustes de Bluetooth del
-    Motorola, con el S40 visible ("S40").
-  - En el S40, registerApp() puede devolver false y aun así registrar;
-    se decide por onAppStatusChanged.
-  - Con HID no se puede saber qué canción suena en el Motorola (es de
-    un solo sentido; el S40 no tiene AVRCP Controller). Mostrar la
-    canción en pantalla solo es posible con destino "este teléfono" o
-    con una app compañera.
+  solo durante el recorrido. Kilometraje total persistente
+  (OdometerStore), se consulta y reinicia desde MODE. Exportar GPX:
+  pendiente.
+- Menú MODE (dialog_mode): destino de la rueda, voz y kilometraje.
+- Franja LED (LedTickerView): alterna reloj y "lo que suena" como un
+  estéreo de auto; también muestra la Radio FM del S40 (MusicaS40Service
+  lee su notificación y usa sus acciones para cambiar de emisora).
+- Rueda (MusicWheelView): cinco zonas (arriba volumen +, abajo
+  volumen −, izquierda anterior, derecha siguiente, centro
+  reproducir/pausa). Cada zona vibra. Log por zona: RodadaRueda.
+  En llamada cambia a botones (CallMode): sonando = ✕ rechazar a la
+  izquierda y ✓ contestar a la derecha; en curso = ✕ colgar, altavoz al
+  centro y silenciar a la derecha (solo si la notificación los trae).
+- Destino de la rueda (menú ☰): "este teléfono" (teclas multimedia del
+  sistema) o "Motorola" por Bluetooth HID (HidMediaRemote, docs/hid.md;
+  descriptor solo Consumer Control). El HID se registra solo con destino
+  Motorola y se suelta con unregisterApp(). En el S40 registerApp() puede
+  devolver false y aun así registrar; se decide por onAppStatusChanged.
+  Log: RodadaHid.
+- Voz (SpeechController): TTS del sistema en español con foco de audio
+  temporal. "Voz en: este teléfono / Motorola" en el menú ☰ (en el
+  Motorola habla Rodada Enlace, por sus audífonos).
+- Buscar teléfono (comun/Timbre): menú ☰ "Buscar Motorola"; y si el
+  Motorola busca al S40, suena la alarma 30 s y enciende la pantalla;
+  cualquier toque la detiene.
+- Audio del Motorola en el S40 (AudioBridgeReceiver): botón de audio;
+  recibe AAC por un canal RFCOMM aparte (PuenteAudio) y lo reproduce en
+  la bocina o audífonos del S40. Mientras está activo apaga la Radio FM
+  y la rueda sube/baja el volumen del S40.
+
+### Rodada Enlace (Motorola, enlace/)
+
+- EnlaceService: servidor RFCOMM (el S40 se conecta, reintento 3/10/30/60
+  s y luego por eventos). Al conectar manda la canción, la navegación y
+  la llamada actuales.
+- AvisosService (NotificationListener): reenvía solo las apps elegidas
+  (AppsActivity, por defecto ninguna), las indicaciones de Google Maps
+  y las llamadas (CallStyle). Aprieta los botones de la notificación de
+  la llamada (contestar, rechazar, colgar, altavoz, silenciar) por
+  palabras clave. No guarda contenido; deduplica con hash en memoria.
+- SesionMusica (comun): canción que suena en el Motorola para la franja.
+- Voz: dice en el Motorola lo que pide el S40 (DECIR) y pausa la música
+  mientras habla.
+- Buscar S40 y "TE ESTÁN BUSCANDO": aviso rojo a pantalla completa,
+  también sobre el bloqueo.
+- AudioBridgeService: captura el audio multimedia permitido
+  (MediaProjection, pide permiso cada vez) y lo manda al S40 en AAC 24
+  kHz mono. Android no deja capturar llamadas ni apps que lo bloquean.
+
+### Límites ya comprobados
+
+- El S40 no puede saber la canción del Motorola por HID (no tiene AVRCP
+  Controller); por eso la manda Rodada Enlace.
+- El S40 no puede ser manos libres del Motorola (sin HFP-HF); el audio
+  de las llamadas queda en el Motorola.
+- La notificación de llamada de WhatsApp solo trae "Colgar".
+- El Motorola oculta Log.d de los avisos salvo con
+  adb shell setprop log.tag.RodadaAvisos D.
 
 ## Fases
 
@@ -140,7 +186,8 @@ Trabaja solo en la fase actual. No adelantes las siguientes.
 
 ## Fuera de alcance
 
-- Navegación con mapas (se usa Organic Maps).
+- Mapas propios: el S40 solo muestra las indicaciones de Google Maps del
+  Motorola (texto y flecha), no dibuja mapas.
 - Reproductor de música propio (se controla YouTube Music con teclas
   multimedia del sistema).
 

@@ -21,6 +21,8 @@ internal object UbicacionS40 {
     private var ultima: Mensaje.Ubicacion? = null
     private var pendienteRecorrido = false
     private var lecturaUnica: CancellationSignal? = null
+    private var lecturaRed: CancellationSignal? = null
+    private var enviadaEnSolicitud = false
     private var vencimiento: Runnable? = null
 
     /** No inicia GPS en segundo plano: si Rodada no está visible devuelve el último punto. */
@@ -55,11 +57,33 @@ internal object UbicacionS40 {
         try {
             gps.getCurrentLocation(LocationManager.GPS_PROVIDER, senal, context.mainExecutor) { location ->
                 if (lecturaUnica !== senal) return@getCurrentLocation
-                cancelarSolicitud()
                 if (location != null && location.hasAccuracy() && location.accuracy <= 25f) {
+                    cancelarSolicitud()
                     actualizar(context.applicationContext, location, forzar = true)
                 } else {
-                    ultimo?.let { EnlaceCliente.enviarUbicacion(it) }
+                    lecturaUnica = null
+                    if (lecturaRed == null) {
+                        val enviada = enviadaEnSolicitud
+                        cancelarSolicitud()
+                        if (!enviada) ultimo?.let { EnlaceCliente.enviarUbicacion(it) }
+                    }
+                }
+            }
+            // Dentro de casa puede llegar primero una posición aproximada de Wi-Fi/red.
+            if (lecturaUnica != null && gps.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                val senalRed = CancellationSignal()
+                lecturaRed = senalRed
+                gps.getCurrentLocation(LocationManager.NETWORK_PROVIDER, senalRed, context.mainExecutor) { location ->
+                    if (lecturaRed !== senalRed) return@getCurrentLocation
+                    lecturaRed = null
+                    if (location != null && location.hasAccuracy() && location.accuracy <= 500f) {
+                        enviadaEnSolicitud = true
+                        actualizar(context.applicationContext, location, forzar = true, maxPrecision = 500f)
+                    } else if (lecturaUnica == null) {
+                        val enviada = enviadaEnSolicitud
+                        cancelarSolicitud()
+                        if (!enviada) ultimo?.let { EnlaceCliente.enviarUbicacion(it) }
+                    }
                 }
             }
         } catch (_: SecurityException) {
@@ -73,8 +97,9 @@ internal object UbicacionS40 {
 
     private fun programarVencimiento(context: Context) {
         val tarea = Runnable {
+            val enviada = enviadaEnSolicitud
             cancelarSolicitud()
-            leer(context)?.let { EnlaceCliente.enviarUbicacion(it) }
+            if (!enviada) leer(context)?.let { EnlaceCliente.enviarUbicacion(it) }
         }
         vencimiento = tarea
         principal.postDelayed(tarea, PLAZO_MS)
@@ -85,11 +110,14 @@ internal object UbicacionS40 {
         vencimiento = null
         lecturaUnica?.cancel()
         lecturaUnica = null
+        lecturaRed?.cancel()
+        lecturaRed = null
+        enviadaEnSolicitud = false
         pendienteRecorrido = false
     }
 
-    fun actualizar(context: Context, location: Location, forzar: Boolean = false) {
-        if (!location.hasAccuracy() || location.accuracy > 25f || location.time <= 0L) return
+    fun actualizar(context: Context, location: Location, forzar: Boolean = false, maxPrecision: Float = 25f) {
+        if (!location.hasAccuracy() || location.accuracy > maxPrecision || location.time <= 0L) return
         val punto = Mensaje.Ubicacion(location.latitude, location.longitude, location.time, location.accuracy)
         ultima = punto
         val ahora = SystemClock.elapsedRealtime()
@@ -119,7 +147,7 @@ internal object UbicacionS40 {
         return punto.takeIf {
             it.latitud.isFinite() && it.latitud in -90.0..90.0 &&
                 it.longitud.isFinite() && it.longitud in -180.0..180.0 &&
-                it.horaMs > 0L && it.precisionMetros in 0f..25f
+                it.horaMs > 0L && it.precisionMetros in 0f..500f
         }?.also { ultima = it }
     }
 }

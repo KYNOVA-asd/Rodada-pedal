@@ -26,7 +26,12 @@ object UbicacionGuardada {
 
     fun guardar(context: Context, mensaje: Mensaje.Ubicacion) {
         val punto = Punto(mensaje.latitud, mensaje.longitud, mensaje.horaMs, mensaje.precisionMetros)
-        if (!valido(punto) || punto.horaMs < (leer(context)?.horaMs ?: 0L)) return
+        if (!valido(punto)) return
+        val anterior = leer(context)
+        if (anterior != null && punto.horaMs < anterior.horaMs &&
+            !(anterior.horaMs - punto.horaMs <= 30_000L &&
+                punto.precisionMetros < anterior.precisionMetros)
+        ) return
         context.getSharedPreferences(ARCHIVO, Context.MODE_PRIVATE).edit()
             .putLong(LATITUD, punto.latitud.toBits())
             .putLong(LONGITUD, punto.longitud.toBits())
@@ -39,7 +44,7 @@ object UbicacionGuardada {
         punto.latitud.isFinite() && punto.latitud in -90.0..90.0 &&
             punto.longitud.isFinite() && punto.longitud in -180.0..180.0 &&
             punto.horaMs > 0L && punto.precisionMetros.isFinite() &&
-            punto.precisionMetros in 0f..100f
+            punto.precisionMetros in 0f..500f
 
     private const val ARCHIVO = "ubicacion_s40"
     private const val LATITUD = "latitud_bits"

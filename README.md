@@ -51,8 +51,24 @@ muestra el día, la fecha y la hora.
 Cuando la Radio FM del S40 está activa, Rodada muestra su frecuencia desde
 la notificación de esa app y usa sus acciones para cambiar de emisora.
 
-### Fase 2: voz
-- Avisos hablados: hora, velocidad, distancia y promedio.
+### Ya funciona (con Rodada Enlace en el Motorola)
+- Pantalla toda en LED azul, con modo día cuando baja el brillo.
+- Tres páginas: centro (reloj y velocidad), mapa (indicaciones de
+  Google Maps del Motorola) y notificaciones.
+- Avisos de las apps elegidas: "te llegó un mensaje de…", y con un
+  toque lo lee.
+- Franja tipo estéreo de auto con la canción del Motorola o la Radio FM.
+- Llamadas: contestar, rechazar, colgar, altavoz y silenciar desde la
+  rueda.
+- Rueda de música para este teléfono o para el Motorola (Bluetooth HID).
+- Voz por el S40 o por el Motorola.
+- Buscar el otro teléfono: suena fuerte aunque esté en silencio.
+- Audio del Motorola por la bocina o audífonos del S40.
+- Se ve encima de la pantalla de bloqueo y gira en cualquier
+  orientación.
+
+### Fase 2: voz (pendiente)
+- Avisos hablados: velocidad, distancia y promedio.
 - Palabra de activación: "Oye Jardiel".
 - Comandos:
   - "qué hora es"
@@ -61,14 +77,13 @@ la notificación de esa app y usa sus acciones para cambiar de emisora.
   - "siguiente" / "anterior" / "pausa" / "sube" / "baja"
   - "contesta" / "cuelga"
 
-### Fase 3: smartwatch
-- Mostrar en pantalla las notificaciones del teléfono.
-- Leer en voz alta quién llama o escribe.
+### Fase 3: smartwatch (lo que falta)
 - Apagar o posponer alarmas por voz.
 
 ## Fuera de alcance
 
-- Navegación con mapas: se usa Organic Maps, sin conexión.
+- Mapas propios: solo se muestran las indicaciones de Google Maps del
+  Motorola.
 - Reproductor de música: se controla YouTube Music, no se reemplaza.
 
 ## Límites conocidos
@@ -82,7 +97,15 @@ la notificación de esa app y usa sus acciones para cambiar de emisora.
 - Alarmas: apagar la alarma de otra app no siempre es posible; por
   investigar.
 - Notificaciones de otro celular: requieren una app compañera en ese
-  celular, conectada por Bluetooth.
+  celular (Rodada Enlace), conectada por Bluetooth.
+- Llamadas: el audio queda en el Motorola; el S40 no puede ser manos
+  libres. WhatsApp solo deja colgar, no altavoz.
+- Audio del Motorola al S40: Android no deja capturar llamadas ni apps
+  que bloquean la captura.
+- Cancelación de ruido de los audífonos: no hay forma estándar de
+  cambiarla desde el S40.
+- Batería del Motorola: Rodada Enlace debe estar "Sin restricciones" en
+  Ajustes → Apps → Rodada Enlace → Batería.
 
 ## Decisiones pendientes
 

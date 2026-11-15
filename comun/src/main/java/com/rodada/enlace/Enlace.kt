@@ -67,7 +67,7 @@ import java.util.UUID
 object Enlace {
     val UUID: UUID = java.util.UUID.fromString("6f1c2a4e-8d3b-4c55-9a1e-52d0a7c3e901")
     const val NOMBRE_SERVICIO = "Rodada Enlace"
-    const val VERSION = 10
+    const val VERSION = 11
     const val MAX_LINEA = 2048
     const val MAX_APP = 40
     const val MAX_TITULO = 80
@@ -144,7 +144,7 @@ sealed class Mensaje {
                     val precision = campos.getOrNull(4)?.toFloatOrNull()
                     if (campos.size == 5 && lat != null && lon != null && hora != null && precision != null &&
                         lat.isFinite() && lat in -90.0..90.0 && lon.isFinite() && lon in -180.0..180.0 &&
-                        hora > 0L && precision.isFinite() && precision in 0f..100f
+                        hora > 0L && precision.isFinite() && precision in 0f..500f
                     ) Ubicacion(lat, lon, hora, precision) else null
                 }
                 "PEDIR_UBICACION" -> if (campos.size == 1) PedirUbicacion else null
