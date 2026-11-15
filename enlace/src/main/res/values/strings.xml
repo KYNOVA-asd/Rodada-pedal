@@ -29,6 +29,12 @@
     <string name="read_title">Leer en voz alta el título</string>
     <string name="voice_notification">%1$s: %2$s</string>
     <string name="find_s40">Buscar S40 (que suene)</string>
+    <string name="probe_audio">Probar audio del Motorola</string>
+    <string name="probe_waiting">Probando durante cinco segundos… Reproduce música ahora.</string>
+    <string name="probe_detected">Android permitió capturar audio.</string>
+    <string name="probe_silent">Android entregó silencio. Prueba con música sonando.</string>
+    <string name="probe_failed">No se pudo iniciar la captura de audio.</string>
+    <string name="probe_notification">Prueba de audio en curso</string>
     <string name="find_sent">El S40 está sonando</string>
     <string name="find_no_link">El S40 no está conectado. Abre Rodada en el S40.</string>
     <string name="find_ringing_title">Te están buscando desde el S40</string>

@@ -9,6 +9,10 @@ import android.provider.Settings
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.media.projection.MediaProjectionConfig
+import android.media.projection.MediaProjectionManager
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
@@ -53,6 +57,7 @@ class MainActivity : Activity() {
         findViewById<Button>(R.id.choose_apps).setOnClickListener {
             startActivity(Intent(this, AppsActivity::class.java))
         }
+        findViewById<Button>(R.id.probe_audio).setOnClickListener { startAudioProbe() }
         if (Ajustes(this).enlaceActivo && tienePermisos() && !servicioActivo()) activar()
     }
 
@@ -89,6 +94,7 @@ class MainActivity : Activity() {
         accesoAvisos.text = getString(
             if (permitido) R.string.listener_on else R.string.listener_off
         ) + "\n" + resources.getQuantityString(R.plurals.apps_chosen, elegidas, elegidas)
+        showProbeResult()
     }
 
     override fun onPause() {
@@ -128,6 +134,10 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == AUDIO_PERMISSION) {
+            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) requestProjection()
+            return
+        }
         if (requestCode != PERMISOS) return
         if (tienePermisos()) activar() else Toast.makeText(this, R.string.permissions_needed, Toast.LENGTH_LONG).show()
     }
@@ -137,8 +147,45 @@ class MainActivity : Activity() {
         startForegroundService(Intent(this, EnlaceService::class.java))
     }
 
+    private fun startAudioProbe() {
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), AUDIO_PERMISSION)
+        } else requestProjection()
+    }
+
+    private fun requestProjection() {
+        val manager = getSystemService(MediaProjectionManager::class.java)
+        startActivityForResult(
+            manager.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay()),
+            AUDIO_PROJECTION
+        )
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != AUDIO_PROJECTION || resultCode != RESULT_OK || data == null) return
+        findViewById<TextView>(R.id.probe_result).setText(R.string.probe_waiting)
+        startForegroundService(Intent(this, AudioProbeService::class.java)
+            .putExtra(AudioProbeService.EXTRA_RESULT_CODE, resultCode)
+            .putExtra(AudioProbeService.EXTRA_TOKEN, data))
+        Handler(Looper.getMainLooper()).postDelayed(::showProbeResult, 7_000L)
+    }
+
+    private fun showProbeResult() {
+        val text = when (AudioProbeService.result) {
+            AudioProbeService.Result.DETECTED -> R.string.probe_detected
+            AudioProbeService.Result.SILENT -> R.string.probe_silent
+            AudioProbeService.Result.FAILED -> R.string.probe_failed
+            AudioProbeService.Result.RUNNING -> R.string.probe_waiting
+            AudioProbeService.Result.IDLE -> return
+        }
+        findViewById<TextView>(R.id.probe_result).setText(text)
+    }
+
     companion object {
         const val EXTRA_BUSCANDO = "buscando"
         private const val PERMISOS = 1
+        private const val AUDIO_PERMISSION = 2
+        private const val AUDIO_PROJECTION = 3
     }
 }
