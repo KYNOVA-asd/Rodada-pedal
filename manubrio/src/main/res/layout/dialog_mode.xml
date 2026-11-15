@@ -111,6 +111,12 @@
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/mode_guard"
+            style="@style/ModeChoice"
+            android:gravity="center"
+            android:text="@string/guard_button" />
+
+        <TextView
             android:id="@+id/mode_history"
             style="@style/ModeChoice"
             android:gravity="center"

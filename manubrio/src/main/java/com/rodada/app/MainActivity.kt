@@ -26,6 +26,7 @@ import android.widget.TextView
 import android.widget.Toast
 import com.rodada.enlace.Mensaje
 import com.rodada.enlace.SesionMusica
+import com.rodada.enlace.Bitacora
 import com.rodada.enlace.Timbre
 
 class MainActivity : Activity() {
@@ -231,6 +232,8 @@ class MainActivity : Activity() {
         if (currentCall != null) vibrator.cancel()
         finder.detener()
         fallAlarm.detener()
+        guard.desarmar()
+        guardAlarm.detener()
         super.onDestroy()
     }
 
@@ -396,6 +399,7 @@ class MainActivity : Activity() {
 
     /** Encharcamiento cerca y llovió: franja, voz y vibración. */
     private fun warnFlood(meters: Int) {
+        Bitacora.anotar(this, "ENCHARCAMIENTO_AVISO", meters.toDouble())
         ticker.mostrarUnaVez(getString(R.string.flood_ahead, meters))
         say(getString(R.string.speech_flood, meters))
         if (vibrator.hasVibrator()) {
@@ -407,6 +411,10 @@ class MainActivity : Activity() {
     /** Clima del Motorola: una pasada en la franja y voz solo si viene lluvia. */
     private fun showWeather(weather: Mensaje.Clima) {
         RideState.rainRecent = weather.llovio
+        Bitacora.anotar(
+            this, "CLIMA", weather.tempC.toDouble(),
+            "llovio=${weather.llovio} lluvia_en=${weather.lluviaEnMin} viento=${weather.vientoKmh}"
+        )
         if (weather !== lastWeather) {
             lastWeather = weather
             lastWeatherAtMs = System.currentTimeMillis()
@@ -478,6 +486,10 @@ class MainActivity : Activity() {
     }
 
     private fun handleMusicControl(zone: MusicWheelView.Zone) {
+        if (guard.estado != Guardia.Estado.APAGADO) {
+            enterGuardCode(zone)
+            return
+        }
         // Alarma de caída: derecha (verde) = estoy bien, izquierda (roja) = necesito ayuda.
         if (fallAlarm.sonando) {
             when (zone) {
@@ -627,6 +639,7 @@ class MainActivity : Activity() {
             }
         }
         content.findViewById<TextView>(R.id.mode_history).setOnClickListener { showHistory() }
+        content.findViewById<TextView>(R.id.mode_guard).setOnClickListener { dialog.dismiss(); showGuardMenu() }
         content.findViewById<TextView>(R.id.mode_flood).apply {
             text = getString(R.string.mode_flood, OdometerStore(this@MainActivity).use { it.floodSpots().size })
             setOnClickListener { dialog.dismiss(); showFloodMenu() }
@@ -971,6 +984,150 @@ class MainActivity : Activity() {
             .show()
     }
 
+    // ===================== Modo guardia =====================
+
+    private val guard by lazy { Guardia(this) { reason -> guardAlert(reason) } }
+    private val guardAlarm by lazy { Timbre(this) }
+    private var guardWakeLock: android.os.PowerManager.WakeLock? = null
+    private val guardCode = ArrayDeque<MusicWheelView.Zone>()
+    private var guardCodeStartedMs = 0L
+
+    /** MODE → MODO GUARDIA: activar, o probar foto y Telegram. */
+    private fun showGuardMenu() {
+        // Con mensaje, AlertDialog no muestra listas: van como botones.
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+            .setTitle(R.string.guard_title)
+            .setMessage(R.string.guard_explain)
+            .setPositiveButton(R.string.guard_activate) { _, _ -> startGuard() }
+            .setNeutralButton(R.string.guard_test) { _, _ -> testGuard() }
+            .setNegativeButton(R.string.mode_close, null)
+            .show()
+    }
+
+    private fun withCamera(action: () -> Unit) {
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            action()
+        } else {
+            pendingCameraAction = action
+            requestPermissions(arrayOf(android.Manifest.permission.CAMERA), CAMERA_PERMISSION)
+        }
+    }
+    private var pendingCameraAction: (() -> Unit)? = null
+
+    private fun startGuard() = withCamera {
+        if (RideState.running) {
+            Toast.makeText(this, R.string.guard_stop_ride, Toast.LENGTH_LONG).show()
+            return@withCamera
+        }
+        guard.armar()
+        guardCode.clear()
+        ticker.mostrar(getString(R.string.guard_on_ticker), desplazar = true)
+        findViewById<LedTextView>(R.id.notice_app).text = ""
+        findViewById<LedTextView>(R.id.notice_title).setText(R.string.guard_arming)
+        findViewById<LedTextView>(R.id.notice_text).setText(R.string.guard_code_hint)
+        showPage(Page.NOTICES)
+        say(getString(R.string.speech_guard_arming, (Guardia.ESPERA_MS / 1000).toInt()))
+    }
+
+    /** Código en la rueda: arriba, arriba, anterior, siguiente. */
+    private fun enterGuardCode(zone: MusicWheelView.Zone) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - guardCodeStartedMs > GUARD_CODE_WINDOW_MS) guardCode.clear()
+        if (guardCode.isEmpty()) guardCodeStartedMs = now
+        guardCode.addLast(zone)
+        while (guardCode.size > GUARD_CODE.size) guardCode.removeFirst()
+        if (vibrator.hasVibrator()) vibrator.vibrate(VibrationEffect.createOneShot(25L, VibrationEffect.DEFAULT_AMPLITUDE))
+        if (guardCode.toList() == GUARD_CODE) stopGuard()
+    }
+
+    private fun stopGuard() {
+        guard.desarmar()
+        guardAlarm.detener()
+        guardWakeLock?.let { if (it.isHeld) it.release() }
+        guardWakeLock = null
+        guardCode.clear()
+        updateTicker()
+        showPage(Page.CENTER)
+        say(getString(R.string.speech_guard_off))
+    }
+
+    /** La movieron: alarma, pantalla encendida, fotos y Telegram. */
+    private fun guardAlert(reason: String) {
+        guardAlarm.sonar(GUARD_ALARM_MS)
+        if (guardWakeLock == null) {
+            @Suppress("DEPRECATION")
+            guardWakeLock = getSystemService(android.os.PowerManager::class.java).newWakeLock(
+                android.os.PowerManager.SCREEN_BRIGHT_WAKE_LOCK or android.os.PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "Rodada:guardia_alerta"
+            )
+        }
+        guardWakeLock?.acquire(GUARD_ALARM_MS)
+        findViewById<LedTextView>(R.id.notice_app).text = ""
+        findViewById<LedTextView>(R.id.notice_title).setText(R.string.guard_alert_title)
+        findViewById<LedTextView>(R.id.notice_text).setText(R.string.guard_alert_text)
+        showPage(Page.NOTICES)
+        wakeScreen()
+        enlace?.enviar(Mensaje.Decir(getString(R.string.speech_guard_alert)))
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())
+        takeGuardPhotos(GUARD_PHOTOS) { photos ->
+            Telegram.enviar(this, getString(R.string.guard_telegram_alert, time, reason, guardLocationText()), photos)
+            handler.postDelayed({ guard.reaprender() }, 3_000L)
+        }
+    }
+
+    private fun guardLocationText(): String {
+        val point = UbicacionS40.leer(this) ?: return ""
+        return "\n" + getString(
+            R.string.guard_telegram_location,
+            "https://maps.google.com/?q=%.6f,%.6f".format(java.util.Locale.US, point.latitud, point.longitud)
+        )
+    }
+
+    /** Varias fotos seguidas (la cámara se abre y cierra en cada una). */
+    private fun takeGuardPhotos(count: Int, done: (List<java.io.File>) -> Unit) {
+        val photos = mutableListOf<java.io.File>()
+        // "Flash" de pantalla: blanco al máximo ilumina la cara de enfrente.
+        val flash = android.view.View(this).apply { setBackgroundColor(android.graphics.Color.WHITE) }
+        (window.decorView as android.view.ViewGroup).addView(flash)
+        setBrightness(WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL)
+        fun next(left: Int) {
+            if (left == 0) {
+                (window.decorView as android.view.ViewGroup).removeView(flash)
+                wakeScreen()
+                done(photos)
+                return
+            }
+            CamaraFrontal.tomarFoto(this) { file ->
+                if (file != null) photos += file
+                handler.postDelayed({ next(left - 1) }, GUARD_PHOTO_GAP_MS)
+            }
+        }
+        next(count)
+    }
+
+    /** Probar sin alarma: una foto y un mensaje de prueba a Telegram. */
+    private fun testGuard() = withCamera {
+        if (!Telegram.configurado) {
+            Toast.makeText(this, R.string.guard_no_telegram, Toast.LENGTH_LONG).show()
+        }
+        Toast.makeText(this, R.string.guard_testing, Toast.LENGTH_SHORT).show()
+        takeGuardPhotos(1) { photos ->
+            if (!Telegram.configurado) {
+                Toast.makeText(this, getString(R.string.guard_test_photo_only, photos.size), Toast.LENGTH_LONG).show()
+                return@takeGuardPhotos
+            }
+            Telegram.enviar(this, getString(R.string.guard_telegram_test), photos) { ok, why ->
+                runOnUiThread {
+                    Toast.makeText(
+                        this,
+                        if (ok) getString(R.string.guard_test_ok) else getString(R.string.guard_test_failed, why),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        }
+    }
+
     /** MODE → HISTORIAL: los últimos recorridos guardados en este S40. */
     private fun showHistory() {
         val rides = OdometerStore(this).use { it.rides(HISTORY_SIZE) }
@@ -1001,6 +1158,7 @@ class MainActivity : Activity() {
     private var fallWakeLock: android.os.PowerManager.WakeLock? = null
 
     private fun ringFall(fall: Mensaje.Caida) {
+        Bitacora.anotar(this, "ALARMA_CAIDA", fall.segundos.toDouble(), "prueba=${fall.prueba}")
         fallAlarm.sonar(fall.segundos * 1000L)
         if (fallWakeLock == null) {
             @Suppress("DEPRECATION")
@@ -1019,6 +1177,7 @@ class MainActivity : Activity() {
 
     /** Botón rojo: avisar ya al contacto, sin esperar la cuenta. */
     private fun askForHelp() {
+        Bitacora.anotar(this, "AYUDA")
         if (enlace?.enviar(Mensaje.CaidaAyuda) != true) {
             Toast.makeText(this, R.string.motorola_not_connected, Toast.LENGTH_SHORT).show()
             return
@@ -1041,11 +1200,15 @@ class MainActivity : Activity() {
         fallWakeLock?.let { if (it.isHeld) it.release() }
         fallWakeLock = null
         restoreWheel()
-        if (tellMotorola && wasRinging) enlace?.enviar(Mensaje.CaidaOk)
+        if (tellMotorola && wasRinging) {
+            Bitacora.anotar(this, "ESTOY_BIEN")
+            enlace?.enviar(Mensaje.CaidaOk)
+        }
         if (wasRinging && page == Page.NOTICES && currentCall == null) showPage(Page.CENTER)
     }
 
     private fun fallFinished(result: Mensaje.CaidaAviso) {
+        Bitacora.anotar(this, "AVISO_CAIDA", if (result.enviado) 1.0 else 0.0)
         stopFall(tellMotorola = false)
         findViewById<LedTextView>(R.id.notice_app).text = ""
         findViewById<LedTextView>(R.id.notice_title).setText(
@@ -1152,21 +1315,31 @@ class MainActivity : Activity() {
     /** Pantalla de navegación: flecha grande, distancia, instrucción y resumen. */
     private fun showNav(nav: Mensaje.Nav) {
         currentNav = nav
+        updateNavViews()
+        // "Recalculando…", "Buscando GPS…": se muestran, pero no son maniobra nueva.
+        if (NAV_STATUS.containsMatchIn(nav.instruccion)) {
+            Bitacora.anotar(this, "NAV_ESTADO")
+            return
+        }
         val maneuverChanged = nav.instruccion != lastManeuver
         lastManeuver = nav.instruccion
-        updateNavViews()
-        if (maneuverChanged) {
-            // Maniobra nueva: salta al mapa un rato (salvo si estás leyendo una notificación).
-            if (page != Page.NOTICES) {
-                showPage(Page.MAP)
-                handler.postDelayed(hideNotice, NOTICE_MS)
-            }
-            wakeScreen()
-            if (vibrator.hasVibrator()) {
-                vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 200, 120, 200), -1))
-            }
+        if (!maneuverChanged) return
+        Bitacora.anotar(this, "NAV_MANIOBRA")
+        val now = SystemClock.elapsedRealtime()
+        val canBuzz = now - lastNavBuzzMs >= NAV_BUZZ_MIN_MS
+        if (canBuzz) lastNavBuzzMs = now
+        // Maniobra nueva: salta al mapa un rato (salvo si estás leyendo una notificación).
+        if (page != Page.NOTICES) {
+            showPage(Page.MAP)
+            handler.postDelayed(hideNotice, NOTICE_MS)
+        }
+        wakeScreen()
+        if (canBuzz && vibrator.hasVibrator()) {
+            vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 200, 120, 200), -1))
         }
     }
+
+    private var lastNavBuzzMs = 0L
 
     private fun hideNav() {
         if (currentNav == null) return
@@ -1248,11 +1421,23 @@ class MainActivity : Activity() {
         override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
             val tenths = intent.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
             if (tenths != Int.MIN_VALUE) onTemperature(tenths / 10f)
+            val level = intent.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            if (level >= 0 && (lastLoggedBattery < 0 || kotlin.math.abs(level - lastLoggedBattery) >= 5)) {
+                lastLoggedBattery = level
+                Bitacora.anotar(this@MainActivity, "BATERIA", level.toDouble())
+            }
         }
     }
 
+    private var lastLoggedTemp = Int.MIN_VALUE
+    private var lastLoggedBattery = -1
+
     private fun onTemperature(celsius: Float) {
         showHeatBorder(celsius)
+        if (celsius.toInt() != lastLoggedTemp) {
+            lastLoggedTemp = celsius.toInt()
+            Bitacora.anotar(this, "TEMP", celsius.toDouble())
+        }
         when {
             !overheated && celsius >= HOT_C -> {
                 overheated = true
@@ -1378,6 +1563,11 @@ class MainActivity : Activity() {
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (guard.estado != Guardia.Estado.APAGADO) {
+            val wheelArea = android.graphics.Rect()
+            findViewById<android.view.View>(R.id.music_wheel).getGlobalVisibleRect(wheelArea)
+            if (!wheelArea.contains(event.rawX.toInt(), event.rawY.toInt())) return true
+        }
         // Cambiar el brillo a mitad de un toque hace que Android cancele el gesto. Si la
         // pantalla está tenue, se ilumina al levantar el dedo y el gesto se completa.
         if (event.actionMasked == MotionEvent.ACTION_DOWN && finder.sonando) {
@@ -1569,6 +1759,12 @@ class MainActivity : Activity() {
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == CAMERA_PERMISSION) {
+            val action = pendingCameraAction
+            pendingCameraAction = null
+            if (grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED) action?.invoke()
+            return
+        }
         if (requestCode == BLUETOOTH_PERMISSIONS_REQUEST) {
             val action = afterBluetoothPermission ?: ::startMotorola
             afterBluetoothPermission = null
@@ -1618,6 +1814,20 @@ class MainActivity : Activity() {
         private const val MAPS_PACKAGE = "com.google.android.apps.maps"
         private const val DEFAULT_BRIGHT_MS = 60_000L
         private const val HISTORY_SIZE = 20
+        private const val CAMERA_PERMISSION = 77
+        private val GUARD_CODE = listOf(
+            MusicWheelView.Zone.UP, MusicWheelView.Zone.UP, MusicWheelView.Zone.PREVIOUS, MusicWheelView.Zone.NEXT
+        )
+        private const val GUARD_CODE_WINDOW_MS = 10_000L
+        private const val GUARD_ALARM_MS = 60_000L
+        private const val GUARD_PHOTOS = 3
+        private const val GUARD_PHOTO_GAP_MS = 500L
+        /** Estados de Maps que no son una maniobra (no vibran). */
+        private val NAV_STATUS = Regex(
+            "recalcul|buscando|gps|se[ñn]al|esperando|calculando|reroute|searching|rerouting",
+            RegexOption.IGNORE_CASE
+        )
+        private const val NAV_BUZZ_MIN_MS = 10_000L
         private const val PIXEL_SHIFT_MS = 2 * 60 * 1000L
         private const val PIXEL_SHIFT_DP = 2f
         private val PIXEL_SHIFT_PATTERN = listOf(

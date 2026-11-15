@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
+import com.rodada.enlace.Bitacora
 import kotlin.math.abs
 import kotlin.math.sqrt
 
@@ -19,6 +20,8 @@ import kotlin.math.sqrt
  * un recorrido (armar/desarmar); nada se guarda.
  */
 class DetectorCaidas(context: Context, private val alDetectar: () -> Unit) : SensorEventListener {
+    private val contexto = context.applicationContext
+    private var ultimoPicoMs = 0L
     private val sensores = context.getSystemService(SensorManager::class.java)
     private val acelerometro: Sensor? = sensores.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
     private val principal = Handler(Looper.getMainLooper())
@@ -40,6 +43,7 @@ class DetectorCaidas(context: Context, private val alDetectar: () -> Unit) : Sen
         ultimoFrenonMs = 0L
         val quieto = movimientos <= MAX_MOVIMIENTOS
         Log.d(TAG, "quietud terminada: movimientos=$movimientos quieto=$quieto")
+        Bitacora.anotar(contexto, "QUIETUD", movimientos.toDouble(), "quieto=$quieto")
         if (quieto && armado) alDetectar()
     }
 
@@ -49,6 +53,7 @@ class DetectorCaidas(context: Context, private val alDetectar: () -> Unit) : Sen
         sensores.registerListener(this, acelerometro, SensorManager.SENSOR_DELAY_GAME, principal)
         despierto.acquire(MAX_ARMADO_MS)
         Log.d(TAG, "armado")
+        Bitacora.anotar(contexto, "ARMADO", null, Bitacora.bateria(contexto))
     }
 
     fun desarmar() {
@@ -61,6 +66,7 @@ class DetectorCaidas(context: Context, private val alDetectar: () -> Unit) : Sen
         ultimoFrenonMs = 0L
         if (despierto.isHeld) despierto.release()
         Log.d(TAG, "desarmado")
+        Bitacora.anotar(contexto, "DESARMADO", null, Bitacora.bateria(contexto))
     }
 
     /** El S40 avisó de un frenón. */
@@ -68,15 +74,23 @@ class DetectorCaidas(context: Context, private val alDetectar: () -> Unit) : Sen
         if (!armado) return
         ultimoFrenonMs = System.currentTimeMillis()
         Log.d(TAG, "frenón")
+        Bitacora.anotar(contexto, "FRENON")
         revisar()
     }
 
     override fun onSensorChanged(event: SensorEvent) {
         val (x, y, z) = Triple(event.values[0], event.values[1], event.values[2])
         val fuerza = sqrt(x * x + y * y + z * z)
+        // Para calibrar: picos medianos (no llegan a golpe), máximo uno cada 2 s.
+        val ahora = System.currentTimeMillis()
+        if (fuerza > UMBRAL_PICO && fuerza <= UMBRAL_GOLPE && ahora - ultimoPicoMs > 2_000L) {
+            ultimoPicoMs = ahora
+            Bitacora.anotar(contexto, "PICO", fuerza / SensorManager.GRAVITY_EARTH.toDouble())
+        }
         if (fuerza > UMBRAL_GOLPE) {
             if (!vigilando) {
                 ultimoGolpeMs = System.currentTimeMillis()
+                Bitacora.anotar(contexto, "GOLPE", fuerza / SensorManager.GRAVITY_EARTH.toDouble())
                 Log.d(TAG, "golpe ${"%.1f".format(fuerza / SensorManager.GRAVITY_EARTH)} g")
                 revisar()
             }
@@ -92,6 +106,7 @@ class DetectorCaidas(context: Context, private val alDetectar: () -> Unit) : Sen
         vigilando = true
         movimientos = 0
         Log.d(TAG, "golpe + frenón: vigilando quietud")
+        Bitacora.anotar(contexto, "VIGILANDO")
         principal.postDelayed(finQuietud, QUIETUD_MS)
     }
 
@@ -99,6 +114,7 @@ class DetectorCaidas(context: Context, private val alDetectar: () -> Unit) : Sen
         private const val TAG = "RodadaCaidas"
         /** 3.5 g: más que un bache en la mochila, menos que un golpe contra el suelo. */
         private const val UMBRAL_GOLPE = 3.5f * SensorManager.GRAVITY_EARTH
+        private const val UMBRAL_PICO = 2.0f * SensorManager.GRAVITY_EARTH
         /** Desviación de la gravedad que cuenta como "se movió". */
         private const val UMBRAL_MOVIMIENTO = 2.5f
         private const val VENTANA_MS = 6_000L

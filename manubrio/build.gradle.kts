@@ -16,6 +16,16 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "0.1"
+        // Telegram del modo guardia desde .env (ignorado por git); vacío si no existe.
+        fun env(clave: String): String = rootProject.file(".env").takeIf { it.exists() }?.readLines()
+            ?.firstOrNull { it.trim().startsWith("$clave=") }
+            ?.substringAfter("=")?.trim()?.trim('"') ?: ""
+        buildConfigField("String", "TELEGRAM_BOT", "\"${env("telegram_bot")}\"")
+        buildConfigField("String", "TELEGRAM_CHAT", "\"${env("telegram_chat")}\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
 

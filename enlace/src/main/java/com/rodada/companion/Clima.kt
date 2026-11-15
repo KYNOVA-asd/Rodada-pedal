@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import com.rodada.enlace.Bitacora
 import com.rodada.enlace.Mensaje
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -84,8 +85,9 @@ class Clima(
         val lon = "%.2f".format(Locale.US, punto.longitud)
         Thread({
             val resultado = try {
-                pedir(lat, lon)
+                pedir(lat, lon).also { Bitacora.anotar(contexto, "CLIMA_OK", it.tempC.toDouble()) }
             } catch (e: Exception) {
+                Bitacora.anotar(contexto, "CLIMA_ERROR", null, if (e is java.io.IOException) e.message else e.javaClass.simpleName)
                 // El mensaje solo trae "http NNN" (nunca la URL con la clave).
                 Log.w(TAG, "clima falló: ${e.javaClass.simpleName} ${if (e is java.io.IOException) e.message.orEmpty() else ""}")
                 null

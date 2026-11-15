@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
+import com.rodada.enlace.Bitacora
 import com.rodada.enlace.CanalEnlace
 import com.rodada.enlace.Enlace
 import com.rodada.enlace.Mensaje
@@ -218,6 +219,7 @@ class EnlaceService : Service() {
             Mensaje.PedirClima -> clima.pedirAhora()
             Mensaje.CaidaOk -> estoyBien(avisarS40 = false)
             Mensaje.CaidaAyuda -> if (EnlaceEstado.caida) {
+                Bitacora.anotar(this, "AYUDA")
                 principal.removeCallbacks(terminarCuenta)
                 avisarContacto()
             }
@@ -231,6 +233,7 @@ class EnlaceService : Service() {
         if (EnlaceEstado.caida) return
         caidaPrueba = prueba
         EnlaceEstado.caida = true
+        Bitacora.anotar(this, "ALARMA_CAIDA", null, "prueba=$prueba")
         alarmaCaida.sonar(DURACION_CAIDA_MS + 2_000L)
         val bien = PendingIntent.getService(
             this, 3, Intent(this, EnlaceService::class.java).setAction(ACCION_ESTOY_BIEN),
@@ -267,6 +270,7 @@ class EnlaceService : Service() {
         alarmaCaida.detener()
         getSystemService(NotificationManager::class.java).cancel(ID_CAIDA)
         EnlaceEstado.caida = false
+        Bitacora.anotar(this, "ESTOY_BIEN", null, if (avisarS40) "moto" else "s40")
         if (avisarS40) enviar(Mensaje.CaidaOk)
     }
 
@@ -285,6 +289,7 @@ class EnlaceService : Service() {
         }
         val sms = mandarSms(numero, textoCaida(prueba = false))
         val llamada = llamar(numero)
+        Bitacora.anotar(this, "AVISO", null, "sms=$sms llamada=$llamada")
         enviar(Mensaje.CaidaAviso(sms || llamada))
         avisoFinal(getString(if (sms || llamada) R.string.fall_sent else R.string.fall_failed, nombre))
     }

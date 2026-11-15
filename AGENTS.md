@@ -202,7 +202,11 @@ Trabaja solo en la fase actual. No adelantes las siguientes.
 - Enlace: lo único que sale a internet es la consulta del clima a
   OpenWeatherMap (Clima.kt): al iniciar un recorrido, cada hora mientras
   dure, o con tres toques en el S40; ubicación redondeada a ~1 km y
-  respuesta reusada si tiene menos de 30 min. Nada más sale a internet.
+  respuesta reusada si tiene menos de 30 min.
+- Manubrio (S40): lo único que sale a internet son las alertas del modo
+  guardia por Telegram (Telegram.kt), por Wi-Fi, solo cuando mueven la
+  bici o al probarlo. El token va en .env (telegram_bot=..., opcional
+  telegram_chat=...). Nada más sale a internet.
   No guardes el contenido de las notificaciones en disco ni en logs.
   Sin sondeos constantes.
 - Si algo no se puede hacer en Android 13 Go o gasta mucha batería,
