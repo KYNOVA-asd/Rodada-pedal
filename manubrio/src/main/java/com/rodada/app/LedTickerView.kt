@@ -2,7 +2,6 @@ package com.rodada.app
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
@@ -11,7 +10,7 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 /**
- * Franja tipo display de estéreo de coche: matriz de puntos LED azul de 7 filas,
+ * Franja tipo reloj digital: matriz de píxeles LCD de 7 filas,
  * dibujada punto por punto con una fuente 5×7 propia (sin fuentes externas).
  *
  * Ciclo, como un autoestéreo:
@@ -28,9 +27,14 @@ import java.time.format.DateTimeFormatter
 class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
     private enum class Fase { RELOJ, TEXTO, UNA_VEZ }
 
-    // LED azul: punto encendido brillante y apagado azul muy oscuro.
-    private val encendido = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(46, 168, 255) }
-    private val apagado = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(8, 24, 44) }
+    private val encendido = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.lcd_ink) }
+    private val apagado = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.lcd_ghost) }
+
+    fun setBacklit(backlit: Boolean) {
+        encendido.color = context.getColor(if (backlit) R.color.lcd_ink else R.color.lcd_day_ink)
+        apagado.color = context.getColor(if (backlit) R.color.lcd_ghost else R.color.lcd_day_ghost)
+        invalidate()
+    }
     private val formatoHora = DateTimeFormatter.ofPattern("HH:mm")
 
     private var base = IntArray(0)
@@ -139,7 +143,8 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
         if (p <= 0f) return
         val visibles = columnasVisibles()
         val margenX = paddingLeft + (ancho() - visibles * p) / 2f
-        val radio = p * 0.38f
+        val medio = p * 0.35f
+        val esquina = p * 0.07f
         val desde = when {
             corriendo -> posicion
             tira.size <= visibles -> -(visibles - tira.size) / 2
@@ -151,7 +156,8 @@ class LedTickerView(context: Context, attrs: AttributeSet?) : View(context, attr
             val x = margenX + c * p + p / 2f
             for (f in 0 until FILAS) {
                 val y = paddingTop + p * f + p / 2f
-                canvas.drawCircle(x, y, radio, if (bits and (1 shl f) != 0) encendido else apagado)
+                canvas.drawRoundRect(x - medio, y - medio, x + medio, y + medio,
+                    esquina, esquina, if (bits and (1 shl f) != 0) encendido else apagado)
             }
         }
     }

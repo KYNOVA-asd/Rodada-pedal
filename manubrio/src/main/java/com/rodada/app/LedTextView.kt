@@ -2,14 +2,13 @@ package com.rodada.app
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
 import kotlin.math.min
 
 /**
- * Texto en matriz de puntos LED azul (misma fuente 5×7 que [LedTickerView]).
+ * Texto en píxeles LCD (misma fuente 5×7 que [LedTickerView]).
  *
  * - Si cabe, queda fijo y centrado, con los puntos tan grandes como permita el alto.
  * - Si no cabe, primero achica los puntos hasta [MIN_ESCALA]; si aun así no cabe, se
@@ -18,8 +17,14 @@ import kotlin.math.min
  *   con la pantalla apagada o la app en segundo plano no gasta nada.
  */
 class LedTextView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
-    private val encendido = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(46, 168, 255) }
-    private val apagado = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(8, 24, 44) }
+    private val encendido = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.lcd_ink) }
+    private val apagado = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.lcd_ghost) }
+
+    fun setBacklit(backlit: Boolean) {
+        encendido.color = context.getColor(if (backlit) R.color.lcd_ink else R.color.lcd_day_ink)
+        apagado.color = context.getColor(if (backlit) R.color.lcd_ghost else R.color.lcd_day_ghost)
+        invalidate()
+    }
 
     private var columnas = IntArray(0)
     private var posicion = 0
@@ -103,7 +108,8 @@ class LedTextView(context: Context, attrs: AttributeSet?) : View(context, attrs)
         val visibles = (ancho() / p).toInt()
         val margenX = paddingLeft + (ancho() - visibles * p) / 2f
         val margenY = paddingTop + (alto() - FILAS * p) / 2f
-        val radio = p * 0.4f
+        val medio = p * 0.36f
+        val esquina = p * 0.07f
         val desplaza = columnas.size > visibles
         val ciclo = columnas.size + ESPACIO
         val desde = if (desplaza) posicion - visibles else -(visibles - columnas.size) / 2
@@ -113,7 +119,8 @@ class LedTextView(context: Context, attrs: AttributeSet?) : View(context, attrs)
             val x = margenX + c * p + p / 2f
             for (f in 0 until FILAS) {
                 val y = margenY + f * p + p / 2f
-                canvas.drawCircle(x, y, radio, if (bits and (1 shl f) != 0) encendido else apagado)
+                canvas.drawRoundRect(x - medio, y - medio, x + medio, y + medio,
+                    esquina, esquina, if (bits and (1 shl f) != 0) encendido else apagado)
             }
         }
     }

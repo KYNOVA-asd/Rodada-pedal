@@ -5,6 +5,8 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import android.util.Log
 import android.view.MotionEvent
 import android.view.View
@@ -44,22 +46,35 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
         }
     private val declinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(211, 47, 47) }
     private val answerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(30, 158, 74) }
-    private val speakerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(46, 168, 255) }
+    private val speakerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(66, 92, 105) }
     private val mutePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(245, 124, 0) }
     private var pressedZone: Zone? = null
     private var clickZone: Zone? = null
 
-    private val wheelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(48, 48, 48) }
-    private val gapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.BLACK }
-    private val centerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(70, 70, 70) }
-    private val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(100, 100, 100) }
+    private val wheelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(190, 194, 193) }
+    private val rimPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(235, 237, 231)
+        style = Paint.Style.STROKE
+    }
+    private val gapPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.watch_case) }
+    private val centerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(216, 219, 215) }
+    private val pressedPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(135, 143, 145) }
     private val symbolPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
+        color = context.getColor(R.color.silver_ink)
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.silver_ink) }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        val radius = wheelRadius()
+        if (radius <= 0f) return
+        wheelPaint.shader = RadialGradient(w / 2f, h / 2f, radius,
+            intArrayOf(Color.rgb(241, 242, 237), Color.rgb(190, 194, 193), Color.rgb(121, 128, 130)),
+            floatArrayOf(0f, 0.72f, 1f), Shader.TileMode.CLAMP)
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
@@ -69,6 +84,8 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
         if (radius <= 0f) return
 
         canvas.drawCircle(cx, cy, radius, wheelPaint)
+        rimPaint.strokeWidth = radius * 0.025f
+        canvas.drawCircle(cx, cy, radius - rimPaint.strokeWidth / 2f, rimPaint)
         canvas.drawCircle(cx, cy, radius * 0.36f, gapPaint)
         canvas.drawCircle(cx, cy, radius * 0.30f, centerPaint)
 
@@ -95,6 +112,10 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
     }
 
     private fun drawCallButtons(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
+        val normalSymbol = symbolPaint.color
+        val normalFill = fillPaint.color
+        symbolPaint.color = Color.WHITE
+        fillPaint.color = Color.WHITE
         val left = cx - radius * 0.64f
         val right = cx + radius * 0.64f
         val r = radius * 0.27f
@@ -136,6 +157,8 @@ class MusicWheelView(context: Context, attrs: android.util.AttributeSet?) : View
             canvas.drawLine(right - m * 2.6f, cy - m * 2.6f, right + m * 2.6f, cy + m * 2.6f, symbolPaint)
         }
         symbolPaint.strokeWidth = previousWidth
+        symbolPaint.color = normalSymbol
+        fillPaint.color = normalFill
     }
 
     private fun drawTrack(canvas: Canvas, x: Float, y: Float, size: Float, previous: Boolean) {

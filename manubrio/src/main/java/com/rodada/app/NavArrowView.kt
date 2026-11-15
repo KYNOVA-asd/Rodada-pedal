@@ -2,14 +2,13 @@ package com.rodada.app
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.util.AttributeSet
 import android.view.View
 import kotlin.math.min
 
-/** Flecha grande de navegación, azul LED como el resto de la pantalla, según la maniobra. */
+/** Flecha grande de navegación, tinta oscura como el resto del LCD. */
 class NavArrowView(context: Context, attrs: AttributeSet?) : View(context, attrs) {
     enum class Turn { STRAIGHT, LEFT, RIGHT, SLIGHT_LEFT, SLIGHT_RIGHT, UTURN, ARRIVE }
 
@@ -22,12 +21,19 @@ class NavArrowView(context: Context, attrs: AttributeSet?) : View(context, attrs
         }
 
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(46, 168, 255)
+        color = context.getColor(R.color.lcd_ink)
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
     }
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.rgb(46, 168, 255) }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = context.getColor(R.color.lcd_ink) }
+
+    fun setBacklit(backlit: Boolean) {
+        val ink = context.getColor(if (backlit) R.color.lcd_ink else R.color.lcd_day_ink)
+        stroke.color = ink
+        fill.color = ink
+        invalidate()
+    }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)

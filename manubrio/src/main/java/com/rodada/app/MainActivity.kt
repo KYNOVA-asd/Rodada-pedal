@@ -57,6 +57,7 @@ class MainActivity : Activity() {
     /** Última instrucción de navegación, para vibrar solo cuando cambia la maniobra. */
     private var lastManeuver: String? = null
     private val dimScreen = Runnable { if (currentCall == null || callActive) setBrightness(DIM_BRIGHTNESS) }
+    private var lcdBacklit: Boolean? = null
     private var wakeOnUp = false
     /** Lo que suena en este S40 (solo con destino "este teléfono" y acceso concedido). */
     private var localMusic: SesionMusica? = null
@@ -156,6 +157,7 @@ class MainActivity : Activity() {
         linkStatus = findViewById(R.id.link_status)
         startLinkIfPossible()
         updateTicker()
+        setLcdBacklight(false)
     }
 
     override fun onResume() {
@@ -793,10 +795,34 @@ class MainActivity : Activity() {
     }
 
     private fun setBrightness(value: Float) {
+        setLcdBacklight(value != DIM_BRIGHTNESS)
         val attributes = window.attributes
         if (attributes.screenBrightness == value) return
         attributes.screenBrightness = value
         window.attributes = attributes
+    }
+
+    private fun setLcdBacklight(backlit: Boolean) {
+        if (lcdBacklit == backlit) return
+        lcdBacklit = backlit
+        findViewById<android.view.View>(R.id.info_panel).setBackgroundResource(
+            if (backlit) R.drawable.info_panel_background else R.drawable.info_panel_day
+        )
+        findViewById<android.view.View>(R.id.ticker).setBackgroundResource(
+            if (backlit) R.drawable.ticker_background else R.drawable.ticker_day
+        )
+        findViewById<android.view.View>(R.id.notice).setBackgroundResource(
+            if (backlit) R.drawable.notice_background else R.drawable.notice_day
+        )
+        fun update(view: android.view.View) {
+            when (view) {
+                is LedTextView -> view.setBacklit(backlit)
+                is LedTickerView -> view.setBacklit(backlit)
+                is NavArrowView -> view.setBacklit(backlit)
+                is android.view.ViewGroup -> for (index in 0 until view.childCount) update(view.getChildAt(index))
+            }
+        }
+        update(findViewById(R.id.screen_half))
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {

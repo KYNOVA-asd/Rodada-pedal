@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="watch_case">#191B1C</color>
+    <color name="lcd_ink">#193D56</color>
+    <color name="lcd_ghost">#93C7D9</color>
+    <color name="lcd_border">#315F77</color>
+    <color name="silver_ink">#25292B</color>
+    <color name="lcd_day_ink">#26332F</color>
+    <color name="lcd_day_ghost">#A8B2A8</color>
+</resources>
