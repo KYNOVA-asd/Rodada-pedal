@@ -37,7 +37,7 @@ Soter, AdServices, OnDevicePersonalization, Feedback, Cronología,
 Bienestar digital, Safety Hub, Restore, PartnerSetup, recomendación de
 impresión, pruebas de fábrica (zyt.agingtest, sprd.validationtools,
 sprd.cameracalibration, sprd.camta, sprd.logmanager), proveedores de
-correo/navegador de ejemplo y el salvapantallas básico.
+correo/navegador de ejemplo, el salvapantallas básico y Fotos Go.
 Restaurar uno: adb -s S404823093183 shell cmd package install-existing PAQUETE
 
 Apps conservadas: Play Store, Google Maps, YouTube Music, Servicios de
