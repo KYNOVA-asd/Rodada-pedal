@@ -116,6 +116,15 @@
         android:textAllCaps="false"
         android:textSize="18sp" />
 
+    <Button
+        android:id="@+id/fall_call_test"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:layout_marginTop="8dp"
+        android:text="@string/fall_call_test_button"
+        android:textAllCaps="false"
+        android:textSize="18sp" />
+
     <TextView
         android:id="@+id/listener_state"
         android:layout_width="match_parent"

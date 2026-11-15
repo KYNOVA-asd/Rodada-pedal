@@ -37,6 +37,10 @@
     <string name="fall_sms_test_send">Mandar</string>
     <string name="fall_sms_test_ok">SMS de prueba enviado</string>
     <string name="fall_sms_test_failed">No se pudo mandar el SMS. Revisa el permiso de SMS y que el enlace esté activo.</string>
+    <string name="fall_call_test_button">Llamada de prueba</string>
+    <string name="fall_call_test_confirm">Se llamará a %1$s, como lo haría el aviso de caída. Avísale que es una prueba.</string>
+    <string name="fall_call_test_call">Llamar</string>
+    <string name="fall_call_test_failed">No se pudo llamar. Revisa el permiso de llamadas y que el enlace esté activo.</string>
     <string name="fall_need_link">Activa el enlace primero.</string>
     <string name="fall_permissions_needed">Sin permiso de SMS y llamadas, la alarma suena pero no puede avisar a tu contacto.</string>
     <string name="fall_channel">Posible caída</string>

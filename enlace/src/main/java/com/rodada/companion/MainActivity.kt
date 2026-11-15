@@ -77,6 +77,7 @@ class MainActivity : Activity() {
             else servicio.iniciarAlarmaCaida(prueba = true)
         }
         findViewById<Button>(R.id.fall_sms_test).setOnClickListener { confirmarSmsPrueba() }
+        findViewById<Button>(R.id.fall_call_test).setOnClickListener { confirmarLlamadaPrueba() }
         findViewById<Button>(R.id.show_s40_location).setOnClickListener {
             startActivity(Intent(this, UbicacionActivity::class.java))
         }
@@ -120,6 +121,28 @@ class MainActivity : Activity() {
     }
 
     private fun permisosCaida(): Array<String> = arrayOf(Manifest.permission.SEND_SMS, Manifest.permission.CALL_PHONE)
+
+    private fun confirmarLlamadaPrueba() {
+        val ajustes = Ajustes(this)
+        val nombre = ajustes.contactoNombre ?: ajustes.contactoNumero
+        if (nombre == null) {
+            Toast.makeText(this, R.string.fall_contact_none, Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (permisosCaida().any { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) {
+            requestPermissions(permisosCaida(), PERMISOS_CAIDA)
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.fall_call_test_button)
+            .setMessage(getString(R.string.fall_call_test_confirm, nombre))
+            .setPositiveButton(R.string.fall_call_test_call) { _, _ ->
+                val ok = EnlaceService.actual?.llamadaDePrueba() ?: false
+                if (!ok) Toast.makeText(this, R.string.fall_call_test_failed, Toast.LENGTH_LONG).show()
+            }
+            .setNegativeButton(R.string.permissions_cancel, null)
+            .show()
+    }
 
     private fun confirmarSmsPrueba() {
         val ajustes = Ajustes(this)

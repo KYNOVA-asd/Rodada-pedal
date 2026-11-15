@@ -281,6 +281,12 @@ class EnlaceService : Service() {
         return mandarSms(numero, textoCaida(prueba = true))
     }
 
+    /** Botón "Llamada de prueba": la misma llamada que haría una caída real. */
+    fun llamadaDePrueba(): Boolean {
+        val numero = Ajustes(this).contactoNumero ?: return false
+        return llamar(numero)
+    }
+
     private fun textoCaida(prueba: Boolean): String {
         val punto = UbicacionGuardada.leer(this)
         val donde = if (punto == null) {
