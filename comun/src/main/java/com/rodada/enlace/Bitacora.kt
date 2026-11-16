@@ -18,6 +18,11 @@ object Bitacora {
     @Volatile private var base: Base? = null
 
     private class Base(context: Context) : SQLiteOpenHelper(context, "rodada_bitacora.db", null, 1) {
+        init {
+            // Sin WAL: todo queda en el .db, así `run-as cat` copia hasta el último evento.
+            setWriteAheadLoggingEnabled(false)
+        }
+
         override fun onCreate(db: SQLiteDatabase) {
             db.execSQL(
                 "CREATE TABLE eventos (id INTEGER PRIMARY KEY AUTOINCREMENT, ms INTEGER NOT NULL, " +
