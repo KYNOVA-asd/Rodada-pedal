@@ -183,6 +183,7 @@ class RideService : Service(), LocationListener {
         private val gravity = FloatArray(3)
         private var hasGravity = false
         private var upright: FloatArray? = null
+        private var uprightFromRiding = false
         private var tiltSinceMs = 0L
         private var tiltLogged = false
         private var lastPeakMs = 0L
@@ -206,7 +207,16 @@ class RideService : Service(), LocationListener {
             if (RideState.speedKmh >= UPRIGHT_KMH) {
                 lastMovingMs = now
                 // Rodando, la bici va derecha: esa es la referencia (se ajusta despacio).
-                upright = upright?.let { ref -> FloatArray(3) { 0.98f * ref[it] + 0.02f * gravity[it] } } ?: gravity.copyOf()
+                // La provisional del arranque se reemplaza al primer momento rodando.
+                // Si ya está muy inclinada no se ajusta: el GPS sigue marcando velocidad
+                // unos segundos después de una caída y la referencia se iría hacia el piso.
+                val ref = upright
+                if (ref == null || !uprightFromRiding) {
+                    upright = gravity.copyOf()
+                    uprightFromRiding = true
+                } else if (angleDeg(ref, gravity) < UPRIGHT_ADAPT_DEG) {
+                    upright = FloatArray(3) { 0.98f * ref[it] + 0.02f * gravity[it] }
+                }
             } else if (upright == null && now - rideStartMs > PROVISIONAL_UPRIGHT_MS) {
                 // Aún no rueda: se toma la posición del arranque como "derecha".
                 upright = gravity.copyOf()
@@ -357,6 +367,7 @@ class RideService : Service(), LocationListener {
         private const val PEAK_REPEAT_MS = 2_000L
         private const val UPRIGHT_KMH = 8f
         private const val PROVISIONAL_UPRIGHT_MS = 3_000L
+        private const val UPRIGHT_ADAPT_DEG = 20f
         private const val TILT_DOWN_DEG = 55f
         private const val TILT_UP_DEG = 30f
         private const val TILT_HOLD_MS = 3_000L
